@@ -23,25 +23,11 @@
     </dependency>
   </dependencies>
   <build>
-    <sourceDirectory>src</sourceDirectory>
-    <resources><resource><directory>resources</directory></resource></resources>
     <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <configuration>
-          <includes>
-            <include>Main.java</include>
-            <include>bc1_usuarios/**/*.java</include>
-            <include>bc2_convocatorias/**/*.java</include>
-            <include>bc3_inscripciones/**/*.java</include>
-          </includes>
-        </configuration>
-      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-        <configuration><mainClass>Main</mainClass></configuration>
+        <configuration><mainClass>org.cruzroja.Main</mainClass></configuration>
       </plugin>
     </plugins>
   </build>

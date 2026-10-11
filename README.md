@@ -751,6 +751,8 @@ mvn spring-boot:run
 
 Cada integrante registra sus propios *commits* con su identidad git configurada (la rúbrica evalúa la participación individual).
 
+El código Java sigue la estructura estándar de Maven: `src/main/java/org/cruzroja` contiene la aplicación y los módulos; `src/main/resources` contiene recursos estáticos, plantillas y archivos de base de datos; y `src/test/java` contiene las pruebas.
+
 ---
 
 ## 10. Gestión del proyecto (Trello)
