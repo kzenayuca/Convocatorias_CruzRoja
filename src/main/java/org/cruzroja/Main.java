@@ -8,7 +8,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /** Punto de entrada de la gestión de inscripciones. */
 @SpringBootApplication(scanBasePackages = {
-        "org.cruzroja.bc1_usuarios", "org.cruzroja.bc2_convocatorias", "org.cruzroja.bc3_inscripciones"
+        "org.cruzroja.usuarios",
+        //"org.cruzroja.bc1_usuarios",
+        "org.cruzroja.bc2_convocatorias",
+        "org.cruzroja.bc3_inscripciones"
 })
 public class Main {
     public static void main(String[] args) {
