@@ -3,8 +3,8 @@ package org.cruzroja.usuarios.presentacion.controllers;
 import org.cruzroja.usuarios.aplicacion.dto.VoluntarioDTO;
 import org.cruzroja.usuarios.aplicacion.interfaces.VoluntarioService;
 import org.cruzroja.usuarios.presentacion.requests.PerfilRequest;
-import org.cruzroja.bc2_convocatorias.aplicacion.services.AutorizacionConvocatoriaServicio;
-import org.cruzroja.bc2_convocatorias.dominio.repositories.IConvocatoriaRepositorio;
+import org.cruzroja.seguridad.aplicacion.services.AutorizacionConvocatoriaServicio;
+import org.cruzroja.convocatorias.dominio.repositories.ConvocatoriaRepository;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.List;
@@ -20,12 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
 public final class VoluntarioController {
     private final VoluntarioService servicio;
     private final AutorizacionConvocatoriaServicio autorizacion;
-    private final IConvocatoriaRepositorio convocatorias;
+    private final ConvocatoriaRepository convocatorias;
 
     public VoluntarioController(
             VoluntarioService servicio,
             AutorizacionConvocatoriaServicio autorizacion,
-            IConvocatoriaRepositorio convocatorias) {
+            ConvocatoriaRepository convocatorias) {
         this.servicio = servicio;
         this.autorizacion = autorizacion;
         this.convocatorias = convocatorias;

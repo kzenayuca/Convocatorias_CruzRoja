@@ -10,7 +10,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @SpringBootApplication(scanBasePackages = {
         "org.cruzroja.usuarios",
         //"org.cruzroja.bc1_usuarios",
-        "org.cruzroja.bc2_convocatorias",
+        "org.cruzroja.convocatorias",
+        "org.cruzroja.seguridad",
         "org.cruzroja.bc3_inscripciones"
 })
 public class Main {

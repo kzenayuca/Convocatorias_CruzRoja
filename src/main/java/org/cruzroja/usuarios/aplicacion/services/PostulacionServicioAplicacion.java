@@ -8,7 +8,7 @@ import org.cruzroja.usuarios.dominio.entities.Voluntario;
 import org.cruzroja.usuarios.dominio.enums.TipoVoluntario;
 import org.cruzroja.usuarios.dominio.repository.PostulacionRepository;
 import org.cruzroja.usuarios.dominio.valueobjects.Perfil;
-import org.cruzroja.bc2_convocatorias.dominio.repositories.IConvocatoriaRepositorio;
+import org.cruzroja.convocatorias.dominio.repositories.ConvocatoriaRepository;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -17,11 +17,11 @@ import org.springframework.stereotype.Service;
 @Service
 public final class PostulacionServicioAplicacion implements PostulacionService {
     private final PostulacionRepository repositorio;
-    private final IConvocatoriaRepositorio convocatorias;
+    private final ConvocatoriaRepository convocatorias;
 
     public PostulacionServicioAplicacion(
             PostulacionRepository repositorio,
-            IConvocatoriaRepositorio convocatorias) {
+            ConvocatoriaRepository convocatorias) {
         this.repositorio = repositorio;
         this.convocatorias = convocatorias;
     }
