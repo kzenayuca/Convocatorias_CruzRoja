@@ -1,2 +1,5 @@
 import type { Feature } from '../../types';
-const feature: Feature = { id: 'inventory', nav: [{ label: 'Inventario', path: '/inventory', icon: 'I', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/inventory', element: <section><h1>Inventario</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Inventario de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;
+import { ModulePage } from '../../shared/ui/ModulePage';
+const feature: Feature = { id: 'inventory', nav: [{ label: 'Inventario', path: '/inventory', icon: '•', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/inventory', element: <ModulePage title='Inventario' description='Controla materiales disponibles, asignaciones y préstamos.' action='Registrar material' items={[{ title: 'Botiquín portátil', detail: '20 total · 6 reservados · 14 disponibles', status: 'Stock disponible', tone: 'ok' as const },
+{ title: 'Radios de comunicación', detail: '10 total · 9 reservados · 1 disponible', status: 'Stock bajo', tone: 'warning' as const }]} /> }] };
+export default feature;

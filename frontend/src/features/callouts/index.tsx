@@ -1,2 +1,5 @@
 import type { Feature } from '../../types';
-const feature: Feature = { id: 'callouts', nav: [{ label: 'Convocatorias', path: '/callouts', icon: 'C', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/callouts', element: <section><h1>Convocatorias</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Convocatorias de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;
+import { ModulePage } from '../../shared/ui/ModulePage';
+const feature: Feature = { id: 'callouts', nav: [{ label: 'Convocatorias', path: '/callouts', icon: '•', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/callouts', element: <ModulePage title='Convocatorias' description='Encuentra servicios compatibles y revisa horarios y cupos.' action='Nueva convocatoria' items={[{ title: 'Campaña de donación de sangre', detail: '14 nov · 08:00–12:00 · Cercado · 32/40 cupos', status: 'Publicada', tone: 'ok' as const },
+{ title: 'Apoyo en emergencias', detail: '20 nov · 07:30–17:00 · Camaná · faltan 2 para el mínimo', status: 'Mínimo pendiente', tone: 'warning' as const }]} /> }] };
+export default feature;

@@ -1,20 +1,17 @@
 # Arquitectura
 
-```mermaid
-graph LR
-users --> callouts --> enrollments --> attendance --> justifications
-callouts --> inventory
-callouts -. eventos .-> notifications
-enrollments -. eventos .-> notifications
-attendance -. AbsenceRecorded .-> notifications
-justifications -. eventos .-> notifications
+Monolito modular con DDD simple:
+
+```text
+HTTP (presentation)
+        ↓
+Casos de uso (application)
+        ↓
+Reglas y puertos (domain)
+        ↑
+PostgreSQL y eventos (infrastructure)
 ```
 
-Cada módulo sigue `Controller → Application → Domain Service → Domain`; aplicación usa puertos de repositorio. No hay claves foráneas entre módulos.
+Módulos: `users ← callouts ← enrollments ← attendance ← justifications`; `inventory` usa el contrato público de `callouts`; `notifications` escucha eventos. Cada módulo solo comparte records e interfaces de su paquete `api` y es dueño de sus tablas.
 
-| Evento | Publica | Escucha |
-|---|---|---|
-| CalloutPublished | callouts | notifications |
-| EnrollmentConfirmed | enrollments | notifications |
-| AbsenceRecorded | attendance | justifications, notifications |
-| JustificationResolved | justifications | notifications |
+Principios: reglas dentro del dominio, autorización en casos de uso, DTO de entrada validado, `JdbcTemplate` explícito, sesión con cookie y errores JSON en español.

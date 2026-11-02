@@ -3,7 +3,12 @@ services:
   image: postgres:16.4-alpine
   environment: {POSTGRES_DB: convocatorias, POSTGRES_USER: "${DB_USER:-cruzroja}", POSTGRES_PASSWORD: "${DB_PASSWORD:-cruzroja}"}
   volumes: [postgres_data:/var/lib/postgresql/data]
+  ports: ["5432:5432"]
   healthcheck: {test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"], interval: 5s, timeout: 5s, retries: 15}
+ adminer:
+  image: adminer:4.8.1
+  ports: ["8081:8080"]
+  depends_on: {db: {condition: service_healthy}}
  backend:
   build: ./backend
   environment: {DB_URL: jdbc:postgresql://db:5432/convocatorias, DB_USER: "${DB_USER:-cruzroja}", DB_PASSWORD: "${DB_PASSWORD:-cruzroja}", SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-demo}"}

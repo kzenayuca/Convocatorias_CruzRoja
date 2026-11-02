@@ -1,2 +1,5 @@
 import type { Feature } from '../../types';
-const feature: Feature = { id: 'notifications', nav: [{ label: 'Avisos', path: '/notifications', icon: 'N', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/notifications', element: <section><h1>Avisos</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Avisos de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;
+import { ModulePage } from '../../shared/ui/ModulePage';
+const feature: Feature = { id: 'notifications', nav: [{ label: 'Avisos', path: '/notifications', icon: '•', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/notifications', element: <ModulePage title='Avisos y comunicados' description='Consulta novedades oficiales y accede directamente a cada tarea.' action='Nuevo comunicado' items={[{ title: 'Inscripción actualizada', detail: 'Tu inscripción fue confirmada', status: 'Sin leer', tone: 'warning' as const },
+{ title: 'Comunicado de jefatura', detail: 'Reunión general el viernes a las 18:00', status: 'Leído', tone: 'ok' as const }]} /> }] };
+export default feature;

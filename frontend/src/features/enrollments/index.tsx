@@ -1,2 +1,5 @@
 import type { Feature } from '../../types';
-const feature: Feature = { id: 'enrollments', nav: [{ label: 'Inscripciones', path: '/enrollments', icon: 'E', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/enrollments', element: <section><h1>Inscripciones</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Inscripciones de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;
+import { ModulePage } from '../../shared/ui/ModulePage';
+const feature: Feature = { id: 'enrollments', nav: [{ label: 'Inscripciones', path: '/enrollments', icon: '•', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/enrollments', element: <ModulePage title='Inscripciones y participantes' description='Sigue solicitudes y organiza el equipo antes del servicio.' action='Inscribirme' items={[{ title: 'Campaña de donación de sangre', detail: 'Solicitud enviada el 2 de noviembre', status: 'Pendiente', tone: 'warning' as const },
+{ title: 'Capacitación en primeros auxilios', detail: 'Participación aceptada', status: 'Confirmada', tone: 'ok' as const }]} /> }] };
+export default feature;

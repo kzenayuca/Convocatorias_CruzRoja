@@ -1,2 +1,5 @@
 import type { Feature } from '../../types';
-const feature: Feature = { id: 'attendance', nav: [{ label: 'Asistencia y horas', path: '/attendance', icon: 'A', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/attendance', element: <section><h1>Asistencia y horas</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Asistencia y horas de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;
+import { ModulePage } from '../../shared/ui/ModulePage';
+const feature: Feature = { id: 'attendance', nav: [{ label: 'Asistencia', path: '/attendance', icon: '•', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/attendance', element: <ModulePage title='Asistencia y horas' description='Registra entrada y salida; las horas se calculan automáticamente.' action='Pasar lista' items={[{ title: 'Campaña de donación de sangre', detail: 'Check-in 08:00 · Check-out 12:30 · 4.5 horas', status: 'Presente', tone: 'ok' as const },
+{ title: 'Apoyo en emergencias', detail: 'Sin check-in ni check-out · 0 horas', status: 'Ausente', tone: 'warning' as const }]} /> }] };
+export default feature;
