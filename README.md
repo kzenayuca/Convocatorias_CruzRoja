@@ -35,6 +35,16 @@ docker compose up -d --build
 
 Adminer: sistema `PostgreSQL`, servidor `db`, usuario/contraseña/base `cruzroja` / `cruzroja` / `convocatorias`.
 
+### Usuarios de demostración
+
+| Rol | Correo | Contraseña |
+|---|---|---|
+| Voluntario | `voluntario@demo.pe` | `password` |
+| Reclutador | `reclutador@demo.pe` | `password` |
+| Jefatura | `jefatura@demo.pe` | `password` |
+
+El login crea una sesión HTTP mediante la cookie `JSESSIONID`. La sesión se recupera al recargar la página y se invalida al cerrar sesión.
+
 ## Desarrollo
 
 Base de datos:
