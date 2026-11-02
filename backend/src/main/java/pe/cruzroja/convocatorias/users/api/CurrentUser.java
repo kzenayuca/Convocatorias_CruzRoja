@@ -1,0 +1,1 @@
+package pe.cruzroja.convocatorias.users.api; import java.util.UUID; public record CurrentUser(UUID id,String role,boolean graduated) { public boolean canManageCallouts(){return "JEFATURA".equals(role)||("RECLUTADOR".equals(role)&&graduated);} }

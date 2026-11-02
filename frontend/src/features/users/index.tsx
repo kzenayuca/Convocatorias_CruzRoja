@@ -1,0 +1,2 @@
+import type { Feature } from '../../types';
+const feature: Feature = { id: 'users', nav: [{ label: 'Usuarios', path: '/users', icon: 'U', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/users', element: <section><h1>Usuarios</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Usuarios de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;

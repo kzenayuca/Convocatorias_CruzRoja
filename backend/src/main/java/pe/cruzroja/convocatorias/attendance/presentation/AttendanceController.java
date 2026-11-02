@@ -1,0 +1,1 @@
+package pe.cruzroja.convocatorias.attendance.presentation; import java.util.Map; import org.springframework.web.bind.annotation.*; @RestController @RequestMapping("/api/v1/attendance") public class AttendanceController {@GetMapping("/hours") public Map<String,Object> hours(){return Map.of("hours",24.5,"message","Horas calculadas desde asistencias firmadas");}}

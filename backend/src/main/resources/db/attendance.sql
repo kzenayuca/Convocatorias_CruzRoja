@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS attendance_records(id UUID PRIMARY KEY,enrollment_id UUID NOT NULL,volunteer_id UUID NOT NULL,callout_id UUID NOT NULL,check_in TIMESTAMP,check_out TIMESTAMP,responsible_id UUID NOT NULL,status VARCHAR(30) NOT NULL,signed BOOLEAN NOT NULL DEFAULT FALSE);

@@ -1,0 +1,1 @@
+package pe.cruzroja.convocatorias.notifications.presentation; import java.util.*; import org.springframework.web.bind.annotation.*; @RestController @RequestMapping("/api/v1/notifications") public class NotificationController {@GetMapping public List<Map<String,Object>> list(){return List.of(Map.of("message","Tu inscripción está pendiente","link","/inscripciones","read",false));}}

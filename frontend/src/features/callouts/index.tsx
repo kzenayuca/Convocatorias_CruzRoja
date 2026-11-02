@@ -1,0 +1,2 @@
+import type { Feature } from '../../types';
+const feature: Feature = { id: 'callouts', nav: [{ label: 'Convocatorias', path: '/callouts', icon: 'C', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/callouts', element: <section><h1>Convocatorias</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Convocatorias de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;

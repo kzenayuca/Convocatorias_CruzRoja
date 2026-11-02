@@ -1,0 +1,2 @@
+import type { Feature } from '../../types';
+const feature: Feature = { id: 'inventory', nav: [{ label: 'Inventario', path: '/inventory', icon: 'I', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/inventory', element: <section><h1>Inventario</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Inventario de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;

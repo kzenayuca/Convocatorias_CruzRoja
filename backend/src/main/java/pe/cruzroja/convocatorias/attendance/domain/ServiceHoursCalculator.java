@@ -1,0 +1,1 @@
+package pe.cruzroja.convocatorias.attendance.domain; import java.time.*; public class ServiceHoursCalculator {public double calculate(LocalDateTime in,LocalDateTime out){if(in==null||out==null||!out.isAfter(in))return 0;return Duration.between(in,out).toMinutes()/60.0;}}

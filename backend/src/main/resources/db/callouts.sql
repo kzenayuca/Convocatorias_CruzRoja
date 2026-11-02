@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS callouts(id UUID PRIMARY KEY,title VARCHAR(150) NOT NULL,description TEXT,start_at TIMESTAMP NOT NULL,end_at TIMESTAMP NOT NULL,location VARCHAR(200),requirements TEXT,minimum_level VARCHAR(30) NOT NULL,capacity INT NOT NULL,minimum_participants INT NOT NULL,status VARCHAR(30) NOT NULL);

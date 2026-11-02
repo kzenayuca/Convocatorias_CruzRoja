@@ -1,0 +1,1 @@
+INSERT INTO callouts VALUES ('10000000-0000-0000-0000-000000000001','Campaña de donación de sangre','Apoyo a donantes',CURRENT_TIMESTAMP + INTERVAL '7 days',CURRENT_TIMESTAMP + INTERVAL '7 days 6 hours','Cercado','Nivel básico','BASICO',40,20,'PUBLICADA') ON CONFLICT DO NOTHING;

@@ -1,0 +1,1 @@
+package pe.cruzroja.convocatorias.justifications.presentation; import java.util.*; import org.springframework.web.bind.annotation.*; @RestController @RequestMapping("/api/v1/justifications") public class JustificationController {@GetMapping public List<Map<String,String>> list(){return List.of(Map.of("status","PENDIENTE","remaining","48 h"));}}

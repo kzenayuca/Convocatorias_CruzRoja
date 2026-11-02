@@ -1,0 +1,2 @@
+import type { Feature } from '../../types';
+const feature: Feature = { id: 'notifications', nav: [{ label: 'Avisos', path: '/notifications', icon: 'N', roles: ['VOLUNTARIO','RECLUTADOR','JEFATURA'] }], routes: [{ path: '/notifications', element: <section><h1>Avisos</h1><div className="grid"><article className="card"><span className="badge">✓ Estado actualizado</span><h2>Avisos de demostración</h2><p>Consulta y gestiona la información desde este módulo.</p><button className="button">Abrir detalle</button></article></div></section> }] }; export default feature;
