@@ -1,1 +1,1 @@
-{"name":"convocatorias-v2","private":true,"scripts":{"dev":"npm --prefix frontend run dev","build":"npm --prefix frontend run build","lint":"npm --prefix frontend run lint","check:contrast":"npm --prefix frontend run check:contrast","up":"docker compose up -d --build"}}
+{"name":"convocatorias","private":true,"scripts":{"dev":"npm --prefix frontend run dev"}}

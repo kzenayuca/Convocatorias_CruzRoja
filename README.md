@@ -1,96 +1,46 @@
-# Sistema de Convocatorias — Cruz Roja Arequipa
+# Convocatorias · Cruz Roja Arequipa
 
-Aplicación web académica para gestionar voluntarios, convocatorias, inscripciones, inventario, asistencia, justificaciones y comunicados. Es un monolito modular con reglas de negocio DDD y escenarios BDD documentados.
+React + Spring Boot + PostgreSQL. Requiere Docker Desktop, Java 17+ con Maven y Node 22.12+.
 
-## Modelo mental
+## Iniciar
 
-| Pregunta | Módulo |
-|---|---|
-| ¿Quién participa? | `users` |
-| ¿En qué servicio? | `callouts` |
-| ¿Quién se inscribió? | `enrollments` |
-| ¿Qué materiales se usan? | `inventory` |
-| ¿Quién asistió y cuántas horas hizo? | `attendance` |
-| ¿La ausencia fue justificada? | `justifications` |
-| ¿Qué debe comunicarse? | `notifications` |
-
-## Ejecutar todo
-
-Requiere Docker Desktop iniciado.
+Desde la raíz:
 
 ```powershell
-Copy-Item .env.example .env -Force
-docker compose down -v
-docker compose up -d --build
+docker compose up -d
 ```
 
-> `down -v` solo es necesario la primera vez o cuando cambió la contraseña local de PostgreSQL.
-
-| Servicio | Dirección |
-|---|---|
-| Aplicación | http://localhost:8088 |
-| Adminer | http://localhost:8081 |
-| PostgreSQL | `localhost:5432` |
-| Salud API | http://localhost:8088/api/v1/health |
-
-Adminer: sistema `PostgreSQL`, servidor `db`, usuario/contraseña/base `cruzroja` / `cruzroja` / `convocatorias`.
-
-### Usuarios de demostración
-
-| Rol | Correo | Contraseña |
-|---|---|---|
-| Voluntario | `voluntario@demo.pe` | `password` |
-| Reclutador | `reclutador@demo.pe` | `password` |
-| Jefatura | `jefatura@demo.pe` | `password` |
-
-El login crea una sesión HTTP mediante la cookie `JSESSIONID`. La sesión se recupera al recargar la página y se invalida al cerrar sesión.
-
-## Desarrollo
-
-Base de datos:
-
-```powershell
-docker compose up -d db adminer
-```
-
-Backend, en otra terminal:
+En otra terminal:
 
 ```powershell
 cd backend
-$env:DB_USER="cruzroja"
-$env:DB_PASSWORD="cruzroja"
 mvn spring-boot:run
 ```
 
-Frontend, en otra terminal:
+En otra terminal:
 
 ```powershell
 cd frontend
-npm install
+npm install # Solo la primera vez o cuando cambien las dependencias.
 npm run dev
 ```
 
-Frontend: http://localhost:5173 · API: http://localhost:8080/api/v1/health
+Web: http://localhost:5173 (o el puerto que indique Vite si está ocupado) · API: http://localhost:8080/api/v1/health · Adminer: http://localhost:8081.
 
-## Pruebas
+## Credenciales locales
 
-```powershell
-cd backend
-mvn clean verify
-```
+- PostgreSQL: base, usuario y contraseña **`convocatorias`**. Conexión local: `127.0.0.1:5433`, para no interferir con PostgreSQL de Windows. En Adminer, servidor `db` (puerto interno `5432`).
+- Login: `voluntario@demo.pe`, `reclutador@demo.pe` o `jefatura@demo.pe`; contraseña **`convocatorias`**.
+- No hace falta `.env`; los valores por defecto están listos para desarrollo. Estas credenciales no son para producción.
+- Si hay un volumen PostgreSQL antiguo, cambiar `.env` no cambia sus cuentas. Hay que migrar las credenciales sin borrar datos; no uses `down -v` si necesitas conservarlos.
+- Si PowerShell tiene `DB_USER`, `DB_PASSWORD` o `DB_URL` antiguos, corrígelos o elimínalos de esa terminal antes de ejecutar Maven. Spring no carga el `.env` de Compose.
 
-Los reportes quedan en `backend/target/surefire-reports` y `backend/target/site/jacoco`. No se incluyen pruebas frontend por decisión del equipo. Para revisar el frontend:
+Opcional: toda la aplicación en Docker con `docker compose --profile app up -d --build`, en http://localhost:8088.
 
-```powershell
-cd frontend
-npm run lint
-npm run build
-```
+## Alcance actual
 
-## Documentación esencial
+El login, la cookie de sesión y el cierre de sesión son reales. Las demás consultas y estadísticas siguen siendo demostrativas; las inscripciones de la interfaz se guardan en el navegador. Esta limpieza no completa su integración con PostgreSQL.
 
-- [Requisitos y escenarios BDD](docs/requisitos-bdd.md)
-- [Arquitectura](docs/architecture.md)
-- [API](docs/api.md)
-- [Pruebas](docs/pruebas.md)
-- [Demostración](docs/demo.md)
+Solo se mantiene `npm run dev`. Sin lint, contraste, Sonar ni cobertura automática. Quedan dos comprobaciones pequeñas de reglas, sin ejecutarse al arrancar. Requisitos acordados y pendientes: [REQUISITOS.md](REQUISITOS.md).
+
+GitHub Actions solo valida configuración Maven/Compose e instalación del frontend. No compila ni ejecuta pruebas todavía. Guarda y sube los cambios de configuración junto con los de la aplicación; crea un tag nuevo únicamente después de que ese commit pase el CI. Reejecutar un workflow antiguo no incorpora estas correcciones.

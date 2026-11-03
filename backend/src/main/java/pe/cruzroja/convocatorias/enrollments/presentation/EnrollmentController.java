@@ -1,1 +1,0 @@
-package pe.cruzroja.convocatorias.enrollments.presentation; import java.util.*; import org.springframework.web.bind.annotation.*; @RestController @RequestMapping("/api/v1/enrollments") public class EnrollmentController {@GetMapping public List<Map<String,String>> list(){return List.of(Map.of("callout","Campaña de donación de sangre","status","PENDIENTE"));}}

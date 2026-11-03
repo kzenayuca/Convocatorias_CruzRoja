@@ -1,32 +1,53 @@
 services:
- db:
-  image: postgres:16.4-alpine
-  environment: {POSTGRES_DB: convocatorias, POSTGRES_USER: "${DB_USER:-cruzroja}", POSTGRES_PASSWORD: "${DB_PASSWORD:-cruzroja}"}
-  volumes: [postgres_data:/var/lib/postgresql/data]
-  ports: ["5432:5432"]
-  healthcheck: {test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"], interval: 5s, timeout: 5s, retries: 15}
- adminer:
-  image: adminer:4.8.1
-  ports: ["8081:8080"]
-  depends_on: {db: {condition: service_healthy}}
- backend:
-  build: ./backend
-  environment: {DB_URL: jdbc:postgresql://db:5432/convocatorias, DB_USER: "${DB_USER:-cruzroja}", DB_PASSWORD: "${DB_PASSWORD:-cruzroja}", SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-demo}"}
-  depends_on: {db: {condition: service_healthy}}
-  healthcheck: {test: [CMD-SHELL, "wget -qO- http://localhost:8080/api/v1/health || exit 1"], interval: 10s, timeout: 5s, retries: 15}
- frontend:
-  build: ./frontend
-  ports: ["${APP_PORT:-8088}:80"]
-  depends_on: {backend: {condition: service_healthy}}
- sonar-db:
-  image: postgres:16.4-alpine
-  profiles: [quality]
-  environment: {POSTGRES_DB: sonar, POSTGRES_USER: sonar, POSTGRES_PASSWORD: sonar}
-  volumes: [sonar_db:/var/lib/postgresql/data]
- sonarqube:
-  image: sonarqube:10.7-community
-  profiles: [quality]
-  environment: {SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar, SONAR_JDBC_USERNAME: sonar, SONAR_JDBC_PASSWORD: sonar, SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"}
-  ports: ["9000:9000"]
-  depends_on: [sonar-db]
-volumes: {postgres_data: {}, sonar_db: {}}
+  db:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: convocatorias
+      POSTGRES_USER: ${DB_USER:-convocatorias}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-convocatorias}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  adminer:
+    image: adminer:4.8.1
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Opcional: toda la aplicación en Docker, sin Maven ni npm locales.
+  backend:
+    profiles: [app]
+    build: ./backend
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/convocatorias
+      DB_USER: ${DB_USER:-convocatorias}
+      DB_PASSWORD: ${DB_PASSWORD:-convocatorias}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  frontend:
+    profiles: [app]
+    build: ./frontend
+    ports:
+      - "8088:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

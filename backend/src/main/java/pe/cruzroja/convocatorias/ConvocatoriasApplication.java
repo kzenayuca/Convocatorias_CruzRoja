@@ -1,1 +1,11 @@
-package pe.cruzroja.convocatorias; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication public class ConvocatoriasApplication {public static void main(String[] args){SpringApplication.run(ConvocatoriasApplication.class,args);}}
+package pe.cruzroja.convocatorias;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ConvocatoriasApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ConvocatoriasApplication.class, args);
+    }
+}

@@ -1,1 +1,0 @@
-package pe.cruzroja.convocatorias.inventory.presentation; import java.util.*; import org.springframework.web.bind.annotation.*; @RestController @RequestMapping("/api/v1/inventory") public class InventoryController {@GetMapping public List<Map<String,Object>> list(){return List.of(Map.of("name","Botiquín portátil","total",20,"reserved",6));}}

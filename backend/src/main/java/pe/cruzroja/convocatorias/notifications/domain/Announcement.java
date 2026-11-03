@@ -1,1 +1,0 @@
-package pe.cruzroja.convocatorias.notifications.domain; import java.util.UUID; public record Announcement(UUID id,String title,String body,AnnouncementAudience audience,UUID publishedBy){public Announcement{if(id==null||title==null||title.isBlank()||body==null||body.isBlank()||audience==null||publishedBy==null)throw new IllegalArgumentException("Comunicado inválido");}}

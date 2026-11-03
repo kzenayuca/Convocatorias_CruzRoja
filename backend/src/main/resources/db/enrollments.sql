@@ -1,1 +1,0 @@
-CREATE TABLE IF NOT EXISTS enrollments(id UUID PRIMARY KEY,volunteer_id UUID NOT NULL,callout_id UUID NOT NULL,status VARCHAR(30) NOT NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(volunteer_id,callout_id));

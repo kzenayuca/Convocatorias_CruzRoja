@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import type { Role } from './types';
-import './shared/ui/tokens.css';
-import './shared/ui/ui.css';
+import './styles.css';
 
-type Session = { id: string; name: string; email: string; role: Role; graduated: boolean };
+type Session = { id: string; name: string; email: string; role: 'VOLUNTARIO' | 'RECLUTADOR' | 'JEFATURA'; graduated: boolean };
 type Callout = { id: string; title: string; description?: string; status: string; date: string; location?: string; capacity: number; enrolled: number };
 type Notice = { id: number; title: string; body: string; kind: string; time: string; to: string; urgent?: boolean; unread?: boolean };
 const demoNotices: Notice[] = [
@@ -17,9 +15,9 @@ const demoNotices: Notice[] = [
 ];
 
 function Login({ onLogin }: { onLogin: (session: Session) => void }) {
-  const [email, setEmail] = useState('voluntario@demo.pe'); const [password, setPassword] = useState('password'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState('voluntario@demo.pe'); const [password, setPassword] = useState('convocatorias'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   async function submit(event: React.FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { const response = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (!response.ok) throw new Error(); onLogin(await response.json()); } catch { setError('No se pudo iniciar sesión. Verifica tus datos e inténtalo de nuevo.'); } finally { setBusy(false); } }
-  return <main className="login-page"><form className="login-card" onSubmit={submit}><div className="brand-mark">+</div><p className="eyebrow">Cruz Roja · Arequipa</p><h1>Qué bueno tenerte aquí</h1><p>Ingresa para continuar con tus actividades de voluntariado.</p><label className="field">Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></label><label className="field">Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button login-button" disabled={busy}>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button><details><summary>Cuentas de demostración</summary><p>voluntario@demo.pe · reclutador@demo.pe · jefatura@demo.pe<br/>Contraseña: password</p></details></form></main>;
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><div className="brand-mark">+</div><p className="eyebrow">Cruz Roja · Arequipa</p><h1>Qué bueno tenerte aquí</h1><p>Ingresa para continuar con tus actividades de voluntariado.</p><label className="field">Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required /></label><label className="field">Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button login-button" disabled={busy}>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button><details><summary>Cuentas de demostración</summary><p>voluntario@demo.pe · reclutador@demo.pe · jefatura@demo.pe<br/>Contraseña: convocatorias</p></details></form></main>;
 }
 
 function Home({ user, calls }: { user: Session; calls: Callout[] }) {
@@ -53,7 +51,10 @@ function ReportsPage() { const [month, setMonth] = useState(new Date().toISOStri
 function App() {
   const [user, setUser] = useState<Session | null>(null); const [loading, setLoading] = useState(true); const [calls, setCalls] = useState<Callout[]>([]); const navigate = useNavigate();
   useEffect(() => { fetch('/api/v1/auth/me').then(async r => { if (r.ok) setUser(await r.json()); }).catch(() => {}).finally(() => setLoading(false)); }, []);
-  useEffect(() => { fetch('/api/v1/callouts').then(r => r.ok ? r.json() : []).then((data: Callout[]) => setCalls(data)).catch(() => setCalls([])); }, []);
+  useEffect(() => {
+    if (!user) return;
+    fetch('/api/v1/callouts').then(r => r.ok ? r.json() : []).then((data: Callout[]) => setCalls(data)).catch(() => setCalls([]));
+  }, [user]);
   async function logout() { await fetch('/api/v1/auth/logout', { method: 'POST' }); setUser(null); navigate('/'); }
   if (loading) return <main className="login-page"><div className="login-card">Cargando tu espacio…</div></main>;
   if (!user) return <Login onLogin={setUser}/>;

@@ -1,1 +1,0 @@
-INSERT INTO materials VALUES ('20000000-0000-0000-0000-000000000001','Botiquín portátil','Primeros auxilios',20,6) ON CONFLICT DO NOTHING;

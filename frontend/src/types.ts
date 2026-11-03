@@ -1,1 +1,0 @@
-import type { ReactNode } from 'react'; export type Role='VOLUNTARIO'|'RECLUTADOR'|'JEFATURA'; export interface Feature {id:string;routes:{path:string;element:ReactNode}[];nav:{label:string;path:string;icon:string;roles:Role[]}[]}
