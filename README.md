@@ -79,12 +79,11 @@ cd backend
 mvn clean verify
 ```
 
-Los reportes quedan en `backend/target/surefire-reports` y `backend/target/site/jacoco`. No se incluyen pruebas frontend por decisión del equipo; sí se validan lint, contraste y build:
+Los reportes quedan en `backend/target/surefire-reports` y `backend/target/site/jacoco`. No se incluyen pruebas frontend por decisión del equipo. Para revisar el frontend:
 
 ```powershell
 cd frontend
 npm run lint
-npm run check:contrast
 npm run build
 ```
 

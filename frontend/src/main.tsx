@@ -1,53 +1,66 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router-dom';
-import type { Feature, Role } from './types';
+import { BrowserRouter, Link, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import type { Role } from './types';
 import './shared/ui/tokens.css';
 import './shared/ui/ui.css';
 
 type Session = { id: string; name: string; email: string; role: Role; graduated: boolean };
-const modules = import.meta.glob('./features/*/index.tsx', { eager: true }) as Record<string, { default: Feature }>;
-const features = Object.values(modules).map(module => module.default);
+type Callout = { id: string; title: string; description?: string; status: string; date: string; location?: string; capacity: number; enrolled: number };
+type Notice = { id: number; title: string; body: string; kind: string; time: string; to: string; urgent?: boolean; unread?: boolean };
+const demoNotices: Notice[] = [
+  { id: 1, title: 'Nueva convocatoria urgente', body: 'Se necesitan voluntarios para una actividad de apoyo.', kind: 'Convocatorias', time: 'Hace 5 min', to: '/callouts', urgent: true, unread: true },
+  { id: 2, title: 'Inscripción aceptada', body: 'Tu inscripción para la campaña de salud fue registrada.', kind: 'Mis avisos', time: 'Hace 1 hora', to: '/services', unread: true },
+  { id: 3, title: 'Justificación en revisión', body: 'Jefatura está revisando tu solicitud.', kind: 'Mis avisos', time: 'Ayer', to: '/services' },
+  { id: 4, title: 'Asistencia registrada', body: 'Se registraron tus horas de servicio.', kind: 'Mis avisos', time: 'Hace 2 días', to: '/services' },
+  { id: 5, title: 'Nuevo comunicado', body: 'Jefatura publicó un aviso para los voluntarios.', kind: 'Comunicados', time: 'Hace 3 días', to: '/notifications' },
+];
 
 function Login({ onLogin }: { onLogin: (session: Session) => void }) {
-  const [email, setEmail] = useState('voluntario@demo.pe');
-  const [password, setPassword] = useState('password');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault(); setLoading(true); setError('');
-    const response = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-    if (response.ok) onLogin(await response.json()); else setError('No pudimos iniciar sesión. Revise el correo y la contraseña.');
-    setLoading(false);
-  }
-
-  return <main className="login-page" id="main"><form className="login-card" onSubmit={submit}>
-    <div className="brand-mark" aria-hidden="true">+</div><p className="eyebrow">Cruz Roja Peruana</p><h1>Bienvenido al sistema</h1><p>Ingrese para gestionar su voluntariado en la Filial Arequipa.</p>
-    <label>Correo electrónico<input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" required /></label>
-    <label>Contraseña<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /></label>
-    {error && <p className="form-error" role="alert">! {error}</p>}
-    <button className="button login-button" disabled={loading}>{loading ? 'Ingresando…' : 'Iniciar sesión'}</button>
-    <details><summary>Cuentas de demostración</summary><p>voluntario@demo.pe<br />reclutador@demo.pe<br />jefatura@demo.pe<br />Contraseña: password</p></details>
-  </form></main>;
+  const [email, setEmail] = useState('voluntario@demo.pe'); const [password, setPassword] = useState('password'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(event: React.FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { const response = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (!response.ok) throw new Error(); onLogin(await response.json()); } catch { setError('No se pudo iniciar sesión. Verifica tus datos e inténtalo de nuevo.'); } finally { setBusy(false); } }
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><div className="brand-mark">+</div><p className="eyebrow">Cruz Roja · Arequipa</p><h1>Qué bueno tenerte aquí</h1><p>Ingresa para continuar con tus actividades de voluntariado.</p><label className="field">Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} required /></label><label className="field">Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button login-button" disabled={busy}>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button><details><summary>Cuentas de demostración</summary><p>voluntario@demo.pe · reclutador@demo.pe · jefatura@demo.pe<br/>Contraseña: password</p></details></form></main>;
 }
 
-function Home({ session }: { session: Session }) {
-  return <section><h1>Hola, {session.name}</h1><p className="lead">Estas son sus tareas principales como {session.role.toLowerCase()}.</p><div className="grid"><article className="card"><span className="badge">✓ Sesión activa</span><h2>Próxima convocatoria</h2><p>Campaña de donación de sangre · 32/40 cupos.</p><div className="progress" aria-label="32 de 40 cupos"><span style={{ width: '80%' }} /></div><Link className="button" to="/callouts">Ver convocatorias</Link></article><article className="panel"><h2>Resumen</h2><strong className="metric">24,5 h</strong><p>Horas firmadas acumuladas.</p><Link to="/attendance">Ver mis horas</Link></article></div></section>;
+function Home({ user, calls }: { user: Session; calls: Callout[] }) {
+  const next = calls[0]; const n = demoNotices.filter(x => x.unread).length;
+  return <><div className="welcome"><div><p className="eyebrow">Tu espacio de voluntariado</p><h1>Hola, {user.name.split(' ')[0]} <span aria-hidden="true">👋</span></h1><p className="lead">Aquí tienes lo importante para hoy.</p></div><div className="welcome-art" aria-hidden="true">❤️</div></div><div className="grid three"><article className="card"><p className="eyebrow">Mis horas</p><div className="stat">24.5 h</div><p className="stat-label">En servicios registrados este mes</p><Link className="link" to="/services">Ver detalle →</Link></article><article className="card"><p className="eyebrow">Actividad próxima</p><h2>{next?.title ?? 'Aún no tienes actividades'}</h2><p>{next ? `${new Date(next.date).toLocaleDateString('es-PE')} · ${next.location ?? 'Arequipa'}` : 'Explora las convocatorias disponibles.'}</p><Link className="link" to="/callouts">Explorar convocatorias →</Link></article><article className="card"><p className="eyebrow">Novedades</p><div className="stat">{n} <span className="stat-label">sin leer</span></div><p className="stat-label">Tienes avisos importantes por revisar.</p><Link className="link" to="/notifications">Ir a notificaciones →</Link></article></div><div className="page-heading" style={{ marginTop: 34 }}><div><p className="eyebrow">Para ti</p><h2>Accesos rápidos</h2></div></div><div className="grid"><Link className="card" to="/callouts"><h2>📍 Convocatorias</h2><p>Encuentra tu próxima actividad.</p></Link><Link className="card" to="/services"><h2>🕒 Mis servicios</h2><p>Revisa inscripciones, asistencia y horas.</p></Link></div></>;
 }
+
+function CalloutsPage({ calls, user }: { calls: Callout[]; user: Session }) {
+  const [query, setQuery] = useState(''); const [selected, setSelected] = useState(''); const [message, setMessage] = useState('');
+  const filtered = useMemo(() => calls.filter(c => `${c.title} ${c.description ?? ''} ${c.location ?? ''}`.toLowerCase().includes(query.toLowerCase())), [calls, query]);
+  const suggestions = query.trim() && !selected ? filtered.slice(0, 4) : [];
+  function enroll(call: Callout) { const key = `enrollments-${user.id}`; const values = JSON.parse(localStorage.getItem(key) ?? '[]') as string[]; if (values.includes(call.id)) { setMessage('Ya estás inscrito en esta convocatoria.'); return; } values.push(call.id); localStorage.setItem(key, JSON.stringify(values)); setMessage(`Tu inscripción a “${call.title}” quedó registrada.`); }
+  return <><div className="page-heading"><div><p className="eyebrow">Encuentra tu próxima actividad</p><h1>Convocatorias</h1><p className="lead">Elige un servicio compatible con tu disponibilidad.</p></div></div><div className="toolbar"><div style={{ position: 'relative', flex: 1 }}><input aria-label="Buscar convocatorias" value={query} onChange={e => { setQuery(e.target.value); setSelected(''); }} placeholder="Busca por actividad o lugar…" autoComplete="off"/>{suggestions.length > 0 && <div className="suggestions" role="listbox">{suggestions.map(c => <button key={c.id} role="option" aria-selected={selected === c.id} onClick={() => { setQuery(c.title); setSelected(c.id); }}>{c.title} <span className="role-label"> · {c.location}</span></button>)}</div>}</div><button className="button secondary" onClick={() => { setQuery(''); setSelected(''); }}>Limpiar</button></div>{message && <div className="panel" role="status">{message}<button className="icon-button" onClick={() => setMessage('')}>Cerrar</button></div>}<div className="list">{filtered.map(c => <article className="list-item" key={c.id}><div><span className="badge">Publicada</span><h2 style={{ marginTop: 10 }}>{c.title}</h2><p>{c.description ?? 'Actividad de voluntariado'} · 📍 {c.location ?? 'Arequipa'}</p><p>🗓 {new Date(c.date).toLocaleString('es-PE')} · {c.enrolled}/{c.capacity} participantes</p></div><button className="button" onClick={() => enroll(c)}>Inscribirme</button></article>)}{!filtered.length && <div className="empty">No encontramos convocatorias con esa búsqueda.</div>}</div></>;
+}
+
+function ServicesPage({ user }: { user: Session }) {
+  const [enrolled] = useState<string[]>(() => JSON.parse(localStorage.getItem(`enrollments-${user.id}`) ?? '[]'));
+  return <><p className="eyebrow">Tu participación</p><h1>Mis servicios</h1><p className="lead">Inscripciones, asistencias y horas en un solo lugar.</p><div className="metrics"><div className="metric-card"><b>24.5 h</b><span>Horas del mes</span></div><div className="metric-card"><b>{enrolled.length}</b><span>Inscripciones activas</span></div><div className="metric-card"><b>0 h</b><span>Pendientes de revisión</span></div></div><div className="page-heading" style={{ marginTop: 28 }}><h2>Mis inscripciones</h2><Link className="button soft" to="/callouts">Buscar convocatoria</Link></div>{enrolled.length ? enrolled.map(id => <article className="list-item" key={id}><div><h2>Convocatoria inscrita</h2><p>Tu inscripción está activa.</p></div><span className="badge">Aceptada</span></article>) : <div className="empty">Todavía no tienes inscripciones. <br/><Link className="link" to="/callouts">Explora las convocatorias →</Link></div>}<div className="page-heading" style={{ marginTop: 30 }}><h2>Asistencia y horas</h2></div><div className="card"><h2>Registro de actividad</h2><p>Las horas se calculan con tu hora de entrada y salida. Si falta un registro, comunícate con jefatura para presentar evidencia.</p><span className="badge warning">Consulta pendiente: 0</span></div></>;
+}
+
+function NotificationsPage() {
+  const [filter, setFilter] = useState('Todas'); const [notices, setNotices] = useState(demoNotices);
+  const filters = ['Todas', 'No leídas', 'Convocatorias', 'Mis avisos'];
+  const shown = notices.filter(n => filter === 'Todas' || (filter === 'No leídas' ? n.unread : n.kind === filter));
+  function openNotice(notice: Notice) { setNotices(old => old.map(n => n.id === notice.id ? { ...n, unread: false } : n)); }
+  return <><p className="eyebrow">Mantente al día</p><h1>Notificaciones</h1><p className="lead">Avisos importantes de tus convocatorias y servicios.</p><div className="filters">{filters.map(f => <button key={f} className={`filter ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}{f === 'No leídas' ? ` (${notices.filter(n => n.unread).length})` : ''}</button>)}</div><div className="list">{shown.map(n => <article key={n.id} className={`notification ${n.unread ? 'unread' : ''}`}><span className="notice-icon">{n.urgent ? '📣' : n.kind === 'Mis avisos' ? '🟢' : '🔔'}</span><div><h3>{n.title} {n.urgent && <span className="badge red">Urgente</span>}</h3><p>{n.body}</p><Link className="link" to={n.to} onClick={() => openNotice(n)}>Ver detalle →</Link></div><span className="notice-time">{n.time}</span></article>)}{!shown.length && <div className="empty">No hay avisos en esta categoría.</div>}</div></>;
+}
+
+function ReportsPage() { const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); return <><p className="eyebrow">Jefatura y reclutamiento</p><h1>Reporte de horas</h1><p className="lead">Consulta la actividad mensual del equipo.</p><label className="field" style={{ maxWidth: 260 }}>Mes<input type="month" value={month} onChange={e => setMonth(e.target.value)}/></label><div className="card"><div className="metrics"><div className="metric-card"><b>24.5 h</b><span>Horas realizadas</span></div><div className="metric-card"><b>0 h</b><span>Horas pendientes</span></div><div className="metric-card"><b>0 h</b><span>Penalizaciones</span></div></div><div className="divider"/><p>El reporte detallado por voluntario y convocatoria aparecerá aquí.</p><button className="button" onClick={() => window.print()}>Imprimir / Guardar PDF</button></div></>; }
 
 function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [checking, setChecking] = useState(true);
-  useEffect(() => { fetch('/api/v1/auth/me').then(async response => { if (response.ok) setSession(await response.json()); }).finally(() => setChecking(false)); }, []);
-
-  async function logout() { await fetch('/api/v1/auth/logout', { method: 'POST' }); setSession(null); }
-  if (checking) return <main className="login-page"><div className="login-card"><p aria-live="polite">Cargando sesión…</p></div></main>;
-  if (!session) return <Login onLogin={setSession} />;
-  const allowedFeatures = features.filter(feature => feature.nav.some(item => item.roles.includes(session.role)));
-  const navigation = allowedFeatures.flatMap(feature => feature.nav).filter(item => item.roles.includes(session.role));
-
-  return <><a className="skip" href="#main">Saltar al contenido</a><header><div><strong>Cruz Roja Peruana</strong><small>Filial Arequipa</small></div><div><span>{session.name}</span><span className="role-badge">{session.role}</span><button className="header-button" onClick={logout}>Cerrar sesión</button></div></header><div className="layout"><aside><nav aria-label="Principal"><NavLink to="/">Inicio</NavLink>{navigation.map(item => <NavLink key={item.path} to={item.path}>{item.label}</NavLink>)}<NavLink to="/ayuda">Ayuda</NavLink></nav></aside><main id="main"><Routes><Route path="/" element={<Home session={session} />}/>{allowedFeatures.flatMap(feature => feature.routes).map(route => <Route key={route.path} path={route.path} element={route.element} />)}<Route path="/ayuda" element={<section><h1>Ayuda</h1><div className="panel"><h2>¿Cómo usar el sistema?</h2><p>Seleccione un módulo, use la búsqueda para encontrar información y la acción principal para registrar datos.</p><p><kbd>Tab</kbd> recorre controles y enlaces.</p></div></section>}/><Route path="*" element={<section><h1>Página no encontrada</h1><Link className="button" to="/">Volver al inicio</Link></section>}/></Routes></main></div></>;
+  const [user, setUser] = useState<Session | null>(null); const [loading, setLoading] = useState(true); const [calls, setCalls] = useState<Callout[]>([]); const navigate = useNavigate();
+  useEffect(() => { fetch('/api/v1/auth/me').then(async r => { if (r.ok) setUser(await r.json()); }).catch(() => {}).finally(() => setLoading(false)); }, []);
+  useEffect(() => { fetch('/api/v1/callouts').then(r => r.ok ? r.json() : []).then((data: Callout[]) => setCalls(data)).catch(() => setCalls([])); }, []);
+  async function logout() { await fetch('/api/v1/auth/logout', { method: 'POST' }); setUser(null); navigate('/'); }
+  if (loading) return <main className="login-page"><div className="login-card">Cargando tu espacio…</div></main>;
+  if (!user) return <Login onLogin={setUser}/>;
+  const canManage = user.role === 'JEFATURA' || (user.role === 'RECLUTADOR' && user.graduated);
+  const nav = [{ to: '/', label: 'Inicio', icon: '⌂' }, { to: '/callouts', label: 'Convocatorias', icon: '◷' }, { to: '/services', label: 'Mis servicios', icon: '✓' }, { to: '/notifications', label: 'Notificaciones', icon: '♧' }, ...(canManage ? [{ to: '/reports', label: 'Reportes', icon: '▤' }] : []), ...(user.role !== 'VOLUNTARIO' ? [{ to: '/inventory', label: 'Materiales', icon: '▧' }] : [])];
+  const count = demoNotices.filter(n => n.unread).length;
+  return <><a className="skip" href="#main">Saltar al contenido</a><header><div><strong>CRUZ ROJA AREQUIPA</strong><small>Filial Arequipa</small></div><div><NavLink className="icon-button" to="/notifications" aria-label={`${count} notificaciones sin leer`}>♧ {count}</NavLink><span className="user-chip"><span className="avatar">{user.name.charAt(0)}</span><span>{user.name}<small className="role-label">{user.role}</small></span></span><button className="header-button" onClick={logout}>Salir</button></div></header><div className="layout"><aside><nav aria-label="Navegación principal">{nav.map(item => <NavLink key={item.to} to={item.to} end={item.to === '/'}><span aria-hidden="true">{item.icon}</span>{item.label}</NavLink>)}</nav></aside><main id="main"><Routes><Route path="/" element={<Home user={user} calls={calls}/>}/><Route path="/callouts" element={<CalloutsPage calls={calls} user={user}/>}/><Route path="/services" element={<ServicesPage user={user}/>}/><Route path="/notifications" element={<NotificationsPage/>}/><Route path="/reports" element={canManage ? <ReportsPage/> : <Home user={user} calls={calls}/>}/><Route path="/inventory" element={<section><p className="eyebrow">Consulta de materiales</p><h1>Materiales para servicios</h1><p className="lead">Consulta el material disponible y su asignación a convocatorias.</p><div className="empty">La lista de materiales se conectará con el inventario de la filial.</div></section>}/><Route path="*" element={<Home user={user} calls={calls}/>}/></Routes></main></div></>;
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><App/></BrowserRouter></React.StrictMode>);
