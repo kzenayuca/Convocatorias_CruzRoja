@@ -1,16 +1,22 @@
 package pe.cruzroja.convocatorias.api;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Consultas de demostración conservadas mientras se completa la persistencia. */
+/** Convocatorias desde PostgreSQL; las otras consultas siguen siendo demostrativas. */
 @RestController
 @RequestMapping("/api/v1")
 public class QueryController {
+    private final JdbcTemplate jdbc;
+
+    public QueryController(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
     @GetMapping("/health")
     public Map<String, String> health() {
         return Map.of("status", "UP");
@@ -18,14 +24,22 @@ public class QueryController {
 
     @GetMapping("/callouts")
     public List<Map<String, Object>> callouts() {
-        return List.of(Map.of(
-                "id", "10000000-0000-0000-0000-000000000001",
-                "title", "Campaña de donación de sangre",
-                "status", "PUBLICADA",
-                "date", LocalDateTime.now().plusDays(7).toString(),
-                "location", "Cercado",
-                "capacity", 40,
-                "enrolled", 32));
+        return jdbc.query("""
+                SELECT c.*, count(e.id) FILTER (WHERE e.status = 'CONFIRMADA') AS enrolled
+                FROM callouts c LEFT JOIN enrollments e ON e.callout_id = c.id
+                GROUP BY c.id
+                ORDER BY (c.start_at < CURRENT_TIMESTAMP), c.start_at, c.id
+                """, (rs, row) -> Map.<String, Object>of(
+                        "id", rs.getString("id"),
+                        "title", rs.getString("title"),
+                        "description", rs.getString("description") == null ? "" : rs.getString("description"),
+                        "status", rs.getString("status"),
+                        "date", rs.getTimestamp("start_at").toLocalDateTime().toString(),
+                        "endDate", rs.getTimestamp("end_at").toLocalDateTime().toString(),
+                        "location", rs.getString("location") == null ? "" : rs.getString("location"),
+                        "capacity", rs.getInt("capacity"),
+                        "enrolled", rs.getInt("enrolled"),
+                        "minimumLevel", rs.getString("minimum_level")));
     }
 
     @GetMapping("/enrollments")
