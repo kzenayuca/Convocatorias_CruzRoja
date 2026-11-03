@@ -21,6 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
+    @GetMapping("/csrf")
+    Map<String, String> csrf(org.springframework.security.web.csrf.CsrfToken token) {
+        return Map.of("token", token.getToken(), "headerName", token.getHeaderName());
+    }
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 

@@ -23,10 +23,33 @@ public final class ServiceRules {
         return justificationApproved ? 0 : scheduledHours * 2;
     }
 
-    public static boolean canJustify(LocalDateTime serviceStart, LocalDateTime submittedAt,
+    public static boolean canJustify(LocalDateTime serviceStart, LocalDateTime serviceEnd, LocalDateTime submittedAt,
                                      LocalDateTime replacementConfirmedAt, boolean hasEvidence) {
-        return serviceStart != null && submittedAt != null && replacementConfirmedAt != null
+        return serviceStart != null && serviceEnd != null && submittedAt != null && replacementConfirmedAt != null
                 && hasEvidence && !replacementConfirmedAt.isAfter(serviceStart)
-                && !submittedAt.isAfter(serviceStart.plusHours(JUSTIFICATION_DEADLINE_HOURS));
+                && !submittedAt.isBefore(serviceEnd)
+                && !submittedAt.isAfter(serviceEnd.plusHours(JUSTIFICATION_DEADLINE_HOURS));
+    }
+
+    public static double recognizedHours(LocalDateTime start, LocalDateTime end,
+                                         LocalDateTime checkIn, LocalDateTime checkOut) {
+        if (checkIn == null || checkOut == null) return 0;
+        var from = checkIn.isAfter(start) ? checkIn : start;
+        var to = checkOut.isBefore(end) ? checkOut : end;
+        return to.isAfter(from) ? Duration.between(from, to).toSeconds() / 3600.0 : 0;
+    }
+
+    public static LocalDateTime reviewDeadline(LocalDateTime requested) {
+        var result = requested;
+        int days = 0;
+        while (days < 5) {
+            result = result.plusDays(1);
+            if (result.getDayOfWeek().getValue() < 6) days++;
+        }
+        return result;
+    }
+
+    public static boolean isLateJustification(LocalDateTime end, LocalDateTime submitted) {
+        return submitted.isAfter(end.plusHours(JUSTIFICATION_DEADLINE_HOURS));
     }
 }

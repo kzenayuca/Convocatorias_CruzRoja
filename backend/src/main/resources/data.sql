@@ -67,3 +67,17 @@ ON CONFLICT DO NOTHING;
 INSERT INTO materials (id, name, category, total_stock, reserved_stock)
 VALUES ('20000000-0000-0000-0000-000000000001', 'Botiquín portátil', 'Primeros auxilios', 20, 6)
 ON CONFLICT DO NOTHING;
+
+-- Los ejemplos quedan a cargo del reclutador demo; no se reasignan servicios ya configurados.
+UPDATE callouts SET responsible_id='00000000-0000-0000-0000-000000000002'
+WHERE id::text LIKE '10000000-0000-0000-0000-%' AND responsible_id IS NULL;
+
+-- Asistencia del ejemplo finalizado: no crear ausencias ficticias al activar los cálculos.
+INSERT INTO attendance_records(id,enrollment_id,volunteer_id,callout_id,check_in,check_out,responsible_id,status,signed,approved_hours)
+SELECT CASE WHEN e.volunteer_id='00000000-0000-0000-0000-000000000001'::uuid
+       THEN '40000000-0000-0000-0000-000000000001'::uuid ELSE '40000000-0000-0000-0000-000000000002'::uuid END,
+       e.id,e.volunteer_id,c.id,c.start_at,c.end_at,c.responsible_id,'CONFIRMADA',true,
+       EXTRACT(EPOCH FROM (c.end_at-c.start_at))/3600
+FROM enrollments e JOIN callouts c ON c.id=e.callout_id
+WHERE e.id IN ('30000000-0000-0000-0000-000000000016'::uuid,'30000000-0000-0000-0000-000000000017'::uuid)
+ON CONFLICT DO NOTHING;

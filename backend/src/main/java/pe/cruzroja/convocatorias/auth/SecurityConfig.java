@@ -17,12 +17,12 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain security(HttpSecurity http) throws Exception {
+    SecurityFilterChain security(HttpSecurity http, JdbcUserDetailsService users) throws Exception {
         return http
-                // Simplificación académica: la SPA usa sesión y solo se ejecuta localmente.
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.csrfTokenRepository(new org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository()))
+                .addFilterBefore(new CurrentAccountFilter(users), org.springframework.security.web.access.intercept.AuthorizationFilter.class)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/health", "/api/v1/auth/login").permitAll()
+                        .requestMatchers("/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/csrf").permitAll()
                         .requestMatchers("/api/v1/inventory/**").hasAnyRole("RECLUTADOR", "JEFATURA")
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {

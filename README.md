@@ -47,8 +47,8 @@ Contraseña para todas las cuentas: **`convocatorias`**.
 
 ## 📌 Qué puedes probar
 
-Sesiones reales, búsqueda con sugerencias y **8 convocatorias demo** con distintos estados y cupos. Hay **10 perfiles**; consulta las cuentas adicionales en [DOCS.md](DOCS.md#datos-demo).
+Registro con aprobación de jefatura, perfiles, convocatorias con detalle, inscripciones persistentes, asistencia compartida, horas mensuales, justificaciones, comunicados y formularios de materiales. Hay **8 convocatorias y 10 perfiles demo**; consulta las cuentas adicionales en [DOCS.md](DOCS.md#datos-demo).
 
-> **En desarrollo:** las nuevas inscripciones se guardan solo en el navegador. Las horas, avisos y reportes siguen siendo demostrativos.
+> **Prototipo local:** sin QR, recuperación de contraseña ni suspensiones automáticas. Conserva tus datos: no uses `docker compose down -v`. Reinicia el backend para aplicar las ampliaciones del esquema.
 
-Las reglas acordadas, los pendientes y las notas de ejecución están en **[DOCS.md](DOCS.md)**. CI básico, sin pruebas ni build por ahora.
+Las reglas y las pruebas **JUnit + Selenium** están en **[DOCS.md](DOCS.md)**. La interfaz conserva el estilo original; frontend y backend siguen en un solo repositorio.

@@ -8,6 +8,30 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiErrorHandler {
+    @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            java.time.DateTimeException.class})
+    ResponseEntity<Map<String,String>> format(Exception error) {
+        return ResponseEntity.badRequest().body(Map.of("mensaje","Revise las fechas y los datos enviados."));
+    }
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    ResponseEntity<Map<String,String>> upload() {
+        return ResponseEntity.status(413).body(Map.of("mensaje","El archivo supera el tamaño permitido."));
+    }
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    ResponseEntity<Map<String, String>> status(org.springframework.web.server.ResponseStatusException error) {
+        return ResponseEntity.status(error.getStatusCode()).body(Map.of("mensaje", error.getReason() == null ? "Operación no permitida." : error.getReason()));
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    ResponseEntity<Map<String, String>> duplicate() {
+        return ResponseEntity.status(409).body(Map.of("mensaje", "Los datos ya están registrados o no son válidos. Revise correo y DNI."));
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    ResponseEntity<Map<String, String>> credentials() {
+        return ResponseEntity.status(401).body(Map.of("mensaje", "Credenciales incorrectas o cuenta no activa."));
+    }
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String, String>> invalid(IllegalArgumentException error) {
         return ResponseEntity.badRequest().body(Map.of("mensaje", error.getMessage()));

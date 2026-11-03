@@ -23,4 +23,11 @@ public class JdbcUserDetailsService implements UserDetailsService {
         if (users.isEmpty()) throw new UsernameNotFoundException("Usuario no encontrado");
         return users.get(0);
     }
+
+    public AuthenticatedUser loadById(java.util.UUID id) {
+        return jdbc.query("SELECT * FROM users WHERE id=?", (rs, row) -> new AuthenticatedUser(
+                id, rs.getString("name"), rs.getString("email"), rs.getString("password_hash"),
+                rs.getString("role"), rs.getBoolean("graduated"), "ACTIVO".equals(rs.getString("status"))), id)
+                .stream().findFirst().orElse(null);
+    }
 }

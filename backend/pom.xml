@@ -12,6 +12,7 @@
     <version>2.0.0-SNAPSHOT</version>
     <properties>
         <java.version>17</java.version>
+        <selenium.version>4.27.0</selenium.version>
     </properties>
     <dependencies>
         <dependency>
@@ -38,6 +39,16 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
