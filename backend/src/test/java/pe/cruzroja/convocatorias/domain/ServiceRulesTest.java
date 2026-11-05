@@ -22,9 +22,9 @@ class ServiceRulesTest {
         assertTrue(ServiceRules.canJustify(start,end,end.plusHours(48),start.minusMinutes(1),true));
         assertFalse(ServiceRules.canJustify(start,end,end.plusHours(1),start.plusMinutes(1),true));
     }
-    @Test void reviewDeadlineSkipsWeekends() {
-        var friday=LocalDateTime.of(2026,11,6,10,0);
-        assertEquals(friday.plusDays(7),ServiceRules.reviewDeadline(friday));
+    @Test void cancellationRequires48HoursOfNotice() {
+        assertTrue(ServiceRules.canRequestCancellation(start,start.minusHours(48)));
+        assertFalse(ServiceRules.canRequestCancellation(start,start.minusHours(48).plusSeconds(1)));
     }
     @Test void balancesCanBeNegativeAndApprovalDoesNotAwardUnworkedHours() {
         assertEquals(-6,0-ServiceRules.absenceDeduction(3,false));
@@ -39,5 +39,26 @@ class ServiceRulesTest {
     @Test void approvedJustificationRemovesDoubleDeduction() {
         assertEquals(12, ServiceRules.absenceDeduction(6, false));
         assertEquals(0, ServiceRules.absenceDeduction(6, true));
+    }
+
+    @Test void tenMinutesAreToleratedButTheNextSecondIsNot() {
+        var end=start.plusHours(5);
+        assertEquals(5,ServiceRules.serviceCredit(start,end,start.plusMinutes(10),end));
+        assertEquals(0,ServiceRules.tardyDeduction(start,end,start.plusMinutes(10),false));
+        assertTrue(ServiceRules.tardyDeduction(start,end,start.plusMinutes(10).plusSeconds(1),false)>0);
+        assertEquals(22.0/60,ServiceRules.tardyDeduction(start,end,start.plusMinutes(11),false),.000001);
+    }
+    @Test void lateJustificationRestoresOnlyThePenaltyNotUnworkedTime() {
+        var end=start.plusHours(5); var arrival=start.plusMinutes(40);
+        double credit=ServiceRules.serviceCredit(start,end,arrival,end);
+        assertEquals(4+20.0/60,credit,.000001);
+        assertEquals(3,credit-ServiceRules.tardyDeduction(start,end,arrival,false),.000001);
+        assertEquals(credit,credit-ServiceRules.tardyDeduction(start,end,arrival,true),.000001);
+    }
+    @Test void earlyDepartureAndExtensionsDoNotInventHours() {
+        var end=start.plusHours(3);
+        assertEquals(3,ServiceRules.serviceCredit(start,end,start.minusMinutes(10),end.plusMinutes(20)));
+        assertEquals(2,ServiceRules.serviceCredit(start,end,start,start.plusHours(2)));
+        assertEquals(1.5,ServiceRules.serviceCredit(start,end,start.plusMinutes(30),start.plusHours(2)));
     }
 }

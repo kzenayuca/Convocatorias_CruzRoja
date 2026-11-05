@@ -15,7 +15,7 @@ export async function api<T = any>(path: string, method = 'GET', body?: unknown)
   if (path === '/auth/login' || path === '/auth/logout') csrf = undefined;
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401 && path !== '/auth/login') window.dispatchEvent(new Event('session-expired'));
+    if (response.status === 401 && path !== '/auth/login') { csrf = undefined; window.dispatchEvent(new Event('session-expired')); }
     throw new Error(data.mensaje || (response.status === 403 ? 'No tienes permiso o tu sesión cambió. Recarga la página.' : 'No se pudo completar la operación.'));
   }
   const text = await response.text();
@@ -45,6 +45,7 @@ export function useData<T>(path: string, initial: T) {
 
 export function changed() { window.dispatchEvent(new Event('data-changed')); }
 export const date = (value: string) => value ? new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : '—';
+export const delay = (minutes: number) => { const seconds = Math.round(Number(minutes) * 60); return `${Math.floor(seconds / 60)} min ${seconds % 60} s`; };
 export const monthNow = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit' }).format(new Date());
 export function localInput(value: string) {
   if (!value) return '';

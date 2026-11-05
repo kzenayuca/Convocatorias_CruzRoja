@@ -3,6 +3,7 @@ package pe.cruzroja.convocatorias.ui;
 import static org.junit.jupiter.api.Assertions.*;
 import java.net.URI;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.*;
@@ -53,5 +54,46 @@ class BrowserTest {
         click("Volver al inicio de sesión"); var input=browser.findElement(By.cssSelector("input[type=email]")); input.clear(); input.sendKeys(email);
         click("Iniciar sesión"); wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[role=alert]")));
         assertTrue(browser.findElements(By.cssSelector(".welcome")).isEmpty());
+    }
+
+    void fill(String name,String value) {
+        var input=browser.findElement(By.name(name)); input.clear(); input.sendKeys(value);
+    }
+    void screenshot(String filename) {
+        try { java.nio.file.Files.write(java.nio.file.Path.of("target",filename),((TakesScreenshot)browser).getScreenshotAs(OutputType.BYTES)); }
+        catch(java.io.IOException error) { throw new RuntimeException(error); }
+    }
+    @Test void chiefPublishesSlotsAndVolunteerIsAcceptedWithoutApproval() {
+        var email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("jefatura@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome"))); click("Convocatorias"); click("Nueva convocatoria");
+        String code="UI-"+System.nanoTime(), title="Servicio Selenium "+System.nanoTime();
+        fill("code",code); fill("title",title); fill("description","Equipo para el servicio comunitario");
+        fill("serviceType","Guardia"); fill("location","Arequipa"); fill("contact","Responsable de guardia"); fill("requirements","Trabajo en equipo");
+        fill("socorristaSlots","1");
+        // Elige un horario realmente libre para poder repetir la prueba sin borrar datos de prueba.
+        var start=LocalDateTime.parse((String)((JavascriptExecutor)browser).executeAsyncScript("""
+            const done=arguments[arguments.length-1];
+            fetch('/api/v1/callouts').then(r=>r.json()).then(rows=>{
+              const start=new Date(); start.setUTCFullYear(start.getUTCFullYear()+2); start.setUTCHours(14,0,0,0);
+              while(rows.some(c=>Date.parse(c.start_at)<start.getTime()+3*3600000 && Date.parse(c.end_at)>start.getTime()))
+                start.setUTCDate(start.getUTCDate()+1);
+              done(new Date(start.getTime()-5*3600000).toISOString().slice(0,16));
+            }).catch(error=>done('Error: '+error.message));
+            """));
+        for(var entry:java.util.Map.of("start",start,"end",start.plusHours(3),"deadline",start.minusDays(1)).entrySet())
+            ((JavascriptExecutor)browser).executeScript("arguments[0].value=arguments[1]",browser.findElement(By.name(entry.getKey())),entry.getValue().toString());
+        click("Crear borrador"); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("h1"),title)); click("Publicar");
+        wait.until(d -> d.findElement(By.tagName("main")).getText().contains("Abierta"));
+        assertTrue(browser.findElement(By.tagName("main")).getText().contains("Responsable"));
+        screenshot("puestos-browser.png");
+        click("Salir"); click("Iniciar sesión"); wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        click("Convocatorias"); wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[aria-label='Buscar convocatorias']"))).sendKeys(code);
+        wait.until(ExpectedConditions.elementToBeClickable(By.linkText(title))).click();
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".requirement input"))).click();
+        click("Inscribirme"); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Guardado correctamente"));
+        click("Consultar mi inscripción →");
+        wait.until(d -> d.findElement(By.tagName("main")).getText().contains(title) && d.findElement(By.tagName("main")).getText().contains("ACEPTADA"));
+        browser.navigate().refresh(); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),title));
     }
 }

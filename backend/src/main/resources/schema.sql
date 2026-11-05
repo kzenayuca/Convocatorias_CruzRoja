@@ -142,3 +142,40 @@ CREATE INDEX IF NOT EXISTS notification_recipient ON notifications(recipient_id)
 ALTER TABLE callouts ADD COLUMN IF NOT EXISTS team_photo BYTEA;
 ALTER TABLE callouts ADD COLUMN IF NOT EXISTS photo_type VARCHAR(30);
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_case_insensitive ON users(lower(email));
+
+-- Versión 2.2: puestos, coordinación separada del encargado y trazabilidad de materiales.
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS service_code VARCHAR(40);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS service_type VARCHAR(100) NOT NULL DEFAULT 'Servicio comunitario';
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS socorrista_slots INT NOT NULL DEFAULT 1 CHECK (socorrista_slots > 0);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS radio_slots INT NOT NULL DEFAULT 0 CHECK (radio_slots BETWEEN 0 AND 1);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS pilot_slots INT NOT NULL DEFAULT 0 CHECK (pilot_slots BETWEEN 0 AND 1);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS planned_hours NUMERIC GENERATED ALWAYS AS (EXTRACT(EPOCH FROM (end_at-start_at))/3600) STORED;
+ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS position VARCHAR(30) NOT NULL DEFAULT 'SOCORRISTA';
+ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS cancellation_requested_at TIMESTAMP;
+ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+ALTER TABLE volunteer_profiles ADD COLUMN IF NOT EXISTS radio_qualified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE volunteer_profiles ADD COLUMN IF NOT EXISTS pilot_qualified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS material_id UUID REFERENCES materials(id);
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS received_quantity INT NOT NULL DEFAULT 0;
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS returned_quantity INT NOT NULL DEFAULT 0;
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS received_by UUID REFERENCES users(id);
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS returned_by UUID REFERENCES users(id);
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS received_at TIMESTAMP;
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS returned_at TIMESTAMP;
+ALTER TABLE material_requests ADD COLUMN IF NOT EXISTS condition_note TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP;
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'AUSENCIA';
+-- Los registros existentes siguen con su cálculo anterior; los nuevos usan la versión 2.
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS policy_version INT NOT NULL DEFAULT 1;
+ALTER TABLE attendance_records ALTER COLUMN policy_version SET DEFAULT 2;
+-- Solo registros anteriores: el código marca las convocatorias que ya fueron migradas.
+UPDATE callouts SET created_by=responsible_id, service_code='LEG-'||id::text,
+    socorrista_slots=capacity, deadline=COALESCE(deadline,start_at),
+    responsible_id=CASE WHEN start_at>CURRENT_TIMESTAMP AND opened_at IS NULL THEN NULL ELSE responsible_id END,
+    status=CASE WHEN status IN ('PUBLICADA','CONFIRMADA') AND start_at>CURRENT_TIMESTAMP THEN 'ABIERTA' ELSE status END
+WHERE service_code IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS callout_service_code_normalized ON callouts(lower(service_code));
+CREATE INDEX IF NOT EXISTS enrollment_position ON enrollments(callout_id,position,status);
+CREATE UNIQUE INDEX IF NOT EXISTS one_responsible_per_callout ON enrollments(callout_id)
+WHERE position='RESPONSABLE' AND status='CONFIRMADA';

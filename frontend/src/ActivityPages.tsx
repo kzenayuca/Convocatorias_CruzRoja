@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, date, monthNow, Row, Session, useData } from './api';
+import { api, date, delay, monthNow, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice } from './components';
+import { positionNames } from './ServicePages';
 
 export function ServicesPage() {
   const enrollments = useData<Row[]>('/enrollments', []); const attendance = useData<Row[]>('/attendance', []);
@@ -11,17 +12,28 @@ export function ServicesPage() {
     <div className="metrics"><div className="metric-card"><b>{hours.data.hours ?? 0} h</b><span>Saldo del mes</span></div><div className="metric-card"><b>{hours.data.earned ?? 0} h</b><span>Horas reconocidas</span></div><div className="metric-card"><b>{hours.data.deductions ?? 0} h</b><span>Deducciones</span></div></div>
     <p>El saldo puede ser negativo. Las justificaciones aprobadas revierten el descuento sin otorgar horas no realizadas.</p><h2>Mis inscripciones</h2>
     {!enrollments.loading && !enrollments.data.length && <div className="empty">Todavía no tienes inscripciones. <Link className="link" to="/callouts">Buscar convocatoria →</Link></div>}
-    {enrollments.data.map(e => <details className="card" key={e.id}><summary>{e.title} · {e.status}</summary><p>{date(e.start_at)} – {date(e.end_at)}</p><p>{e.comment}</p><p>Código para coordinar un reemplazo: {e.id}</p>{e.status === 'CONFIRMADA' && e.kind === 'SERVICIO' && <>
-      <div className="toolbar"><Action path={`/enrollments/${e.id}/mark`} body={{ action: 'ENTRADA' }}>Marcar entrada</Action><Action path={`/enrollments/${e.id}/mark`} body={{ action: 'SALIDA' }}>Marcar salida</Action></div>
+    {enrollments.data.map(e => <details className="card" key={e.id}><summary>{e.title} · {positionNames[e.position]} · {e.status === 'CONFIRMADA' ? 'ACEPTADA' : e.status}</summary><p>{e.service_code} · {date(e.start_at)} – {date(e.end_at)}</p><p>{e.comment}</p><p>Código para coordinar un reemplazo: {e.id}</p>{e.status === 'CONFIRMADA' && new Date(e.start_at).getTime() > Date.now() && <><p>Cancelación: solicita con al menos 48 h. Sigues inscrito y ocupando tu puesto hasta que el encargado acepte al reemplazo.</p>{e.cancellation_requested_at ? <p role="status">Reemplazo solicitado: {e.cancellation_reason}. Comparte tu código de inscripción con el reemplazante.</p> : <DataForm fields={[{ name: 'reason', label: 'Motivo para cancelar y solicitar reemplazo', type: 'textarea' }]} label="Solicitar cancelación con reemplazo" submit={v => api(`/enrollments/${e.id}/cancel-request`, 'POST', v)}/>}</>}{e.status === 'CONFIRMADA' && e.kind === 'SERVICIO' && <>
+      <div className="toolbar"><Link className="link" to={`/callouts/${e.callout_id}`}>Ver servicio →</Link><Action path={`/enrollments/${e.id}/mark`} body={{ action: 'ENTRADA' }}>Marcar entrada</Action><Action path={`/enrollments/${e.id}/mark`} body={{ action: 'SALIDA' }}>Marcar salida</Action></div>
       <DataForm fields={[{ name: 'reason', label: 'Solicitud de revisión / registro incompleto', type: 'textarea' }]} label="Solicitar revisión" submit={v => api(`/enrollments/${e.id}/correction`, 'POST', v)}/>
     </>}</details>)}
-    <h2>Asistencia y horas</h2>{attendance.data.map(a => <details className="card" key={a.id}><summary>{a.title} · {a.status} · {a.approved_hours ?? '—'} h</summary><p>Entrada: {date(a.check_in)} · Salida: {date(a.check_out)}</p><p>{a.observations}</p><p>Justificación: {a.justification_status || 'Sin presentar'}</p>{a.status === 'AUSENTE' && !a.justification_status && <><p>Plazo ordinario: 48 h desde el final. Se requiere reemplazo aceptado antes del inicio. Las presentaciones tardías requieren revisión excepcional.</p><DataForm fields={[{ name: 'reason', label: 'Motivo de la justificación', type: 'textarea' }]} label="Presentar justificación" submit={v => api(`/attendance/${a.id}/justifications`, 'POST', v)}/></>}</details>)}
+    <h2>Asistencia y horas</h2><p>Tolerancia de 10 minutos; más de 10:00 min genera descuento de dos veces el retraso. La justificación aprobada elimina ese descuento, no acredita tiempo no trabajado.</p>
+    {attendance.data.map(a => <details className="card" key={a.id}>
+      <summary>{a.title} · {a.status} · {a.approved_hours ?? '—'} h</summary>
+      <p>Entrada: {date(a.check_in)} · Salida: {date(a.check_out)}</p>
+      <p>Retraso: {delay(a.late_minutes)} · Deducción vigente: {a.deduction} h</p>
+      {a.policy_version < 2 && <p>Registro histórico: conserva el cálculo anterior hasta revisión administrativa.</p>}
+      <p>{a.observations}</p><p>Justificación: {a.justification_status || 'Sin presentar'}</p>
+      {(a.status === 'AUSENTE' || a.policy_version >= 2 && a.late_minutes > 10) && !a.justification_status && <>
+        <p>Plazo ordinario: 48 h desde el final. Solo la inasistencia requiere reemplazo aceptado antes del inicio; la tardanza no. Las presentaciones tardías requieren revisión excepcional.</p>
+        <DataForm fields={[{ name: 'reason', label: 'Motivo de la justificación', type: 'textarea' }]} label="Presentar justificación" submit={v => api(`/attendance/${a.id}/justifications`, 'POST', v)}/>
+      </>}
+    </details>)}
   </>;
 }
 
 export function JustificationsPage({ user }: { user: Session }) {
   const { data, error } = useData<Row[]>('/justifications', []);
-  return <><p className="eyebrow">Asistencia</p><h1>Justificaciones</h1><ErrorNotice message={error}/>{!data.length && <div className="empty">No hay justificaciones.</div>}{data.map(j => <details className="card" key={j.id}><summary>{j.name} · {j.title} · {j.status} {j.late && '· Fuera de las 48 h'}</summary><p>{j.reason}</p><p>Presentada: {date(j.submitted_at)} · Reemplazos aceptados a tiempo: {j.replacements}</p><p>Resolución: {j.resolution_comment || 'Pendiente'}</p>{user.role === 'JEFATURA' && <DataForm fields={[{ name: 'decision', label: 'Resolución / revisión', options: ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo de la resolución', type: 'textarea' }]} submit={v => api(`/justifications/${j.id}/resolve`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}</details>)}</>;
+  return <><p className="eyebrow">Asistencia</p><h1>Justificaciones</h1><ErrorNotice message={error}/>{!data.length && <div className="empty">No hay justificaciones.</div>}{data.map(j => <details className="card" key={j.id}><summary>{j.name} · {j.kind} · {j.title} · {j.status} {j.late && '· Fuera de las 48 h'}</summary><p>{j.reason}</p><p>Presentada: {date(j.submitted_at)}{j.kind === 'AUSENCIA' && ` · Reemplazos aceptados a tiempo: ${j.replacements}`}</p><p>Resolución: {j.resolution_comment || 'Pendiente'}</p>{user.role === 'JEFATURA' && <DataForm fields={[{ name: 'decision', label: 'Resolución / revisión', options: ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo de la resolución', type: 'textarea' }]} submit={v => api(`/justifications/${j.id}/resolve`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}</details>)}</>;
 }
 
 export function NotificationsPage({ user }: { user: Session }) {

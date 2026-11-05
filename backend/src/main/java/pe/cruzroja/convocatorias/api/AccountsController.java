@@ -14,7 +14,8 @@ import org.springframework.web.bind.annotation.*;
 public class AccountsController {
     private final JdbcTemplate db;
     private final PasswordEncoder passwords;
-    public AccountsController(JdbcTemplate db, PasswordEncoder passwords) { this.db = db; this.passwords = passwords; }
+    private final CalloutWorkflow workflow;
+    public AccountsController(JdbcTemplate db, PasswordEncoder passwords, CalloutWorkflow workflow) { this.db = db; this.passwords = passwords; this.workflow=workflow; }
 
     public record Profile(@NotBlank @Size(max=120) String name, @NotBlank @Size(max=160) String surnames,
                           @Email @NotBlank @Size(max=180) String email,
@@ -25,7 +26,8 @@ public class AccountsController {
                                @NotBlank @Size(max=30) String phone) { }
     public record Phone(@NotBlank @Size(max=30) String phone) { }
     public record Review(@NotBlank String role, @NotBlank String level, boolean graduated,
-                         @NotBlank String status, @Size(max=2000) String comment) { }
+                         @NotBlank String status, @NotBlank @Size(max=2000) String comment,
+                         boolean radioQualified, boolean pilotQualified) { }
     public record Decision(boolean approved, @NotBlank @Size(max=2000) String comment) { }
 
     @PostMapping("/auth/register") @Transactional
@@ -37,7 +39,7 @@ public class AccountsController {
         return Map.of("mensaje", "Solicitud registrada. Jefatura debe activar tu cuenta antes de iniciar sesión.");
     }
 
-    private static final String PROFILES = "SELECT u.id,u.name,u.surnames,u.email,u.role,u.graduated,u.status,u.occupation,u.review_comment,p.document,p.phone,p.training_level,p.availability FROM users u LEFT JOIN volunteer_profiles p ON p.user_id=u.id ";
+    private static final String PROFILES = "SELECT u.id,u.name,u.surnames,u.email,u.role,u.graduated,u.status,u.occupation,u.review_comment,p.document,p.phone,p.training_level,p.availability,p.radio_qualified,p.pilot_qualified FROM users u LEFT JOIN volunteer_profiles p ON p.user_id=u.id ";
 
     @GetMapping("/profile")
     public Map<String, Object> profile() { return one(db, PROFILES + " WHERE u.id=?", actor().id()); }
@@ -91,13 +93,14 @@ public class AccountsController {
         valid(!r.level().equals("BASICO") || Objects.equals(old.get("training_level"), "BASICO"), "No se puede reducir el nivel a BASICO.");
         valid(!id.equals(actor().id()) || r.status().equals("ACTIVO") && r.role().equals("JEFATURA"), "No puedes retirar tu propio acceso de jefatura.");
         db.update("UPDATE users SET role=?,graduated=?,status=?,review_comment=? WHERE id=?", r.role(), r.graduated(), r.status(), r.comment(), id);
-        db.update("UPDATE volunteer_profiles SET training_level=? WHERE user_id=?", r.level(), id);
-        if (!r.status().equals("ACTIVO")) {
-            // Se conserva la inscripción como cancelada; nunca se borra su historial.
-            for (var c : affected) {
-                db.update("UPDATE enrollments SET status='CANCELADA',comment='Cuenta no activa' WHERE volunteer_id=? AND callout_id=? AND status IN ('PENDIENTE','CONFIRMADA') AND EXISTS(SELECT 1 FROM callouts WHERE id=callout_id AND start_at>?)", id, c.get("callout_id"), now());
-                db.update("UPDATE callouts c SET status='PUBLICADA' WHERE c.id=? AND c.status='CONFIRMADA' AND c.start_at>? AND (SELECT count(*) FROM enrollments e WHERE e.callout_id=c.id AND e.status='CONFIRMADA')<c.minimum_participants",c.get("callout_id"),now());
+        db.update("UPDATE volunteer_profiles SET training_level=?,radio_qualified=?,pilot_qualified=? WHERE user_id=?", r.level(),r.radioQualified(),r.pilotQualified(),id);
+        for (var entry : affected) {
+            var c=workflow.locked(id(entry,"callout_id"));
+            if(!time(c,"start_at").isAfter(now())) continue;
+            for(var e:db.queryForList("SELECT * FROM enrollments WHERE callout_id=? AND volunteer_id=? AND status IN ('PENDIENTE','CONFIRMADA','PENDIENTE_REEMPLAZO')",c.get("id"),id)) {
+                if(!workflow.qualified(c,id,text(e,"position"))) db.update("UPDATE enrollments SET status='CANCELADA',comment='Cuenta no activa o habilitación retirada por jefatura' WHERE id=?",e.get("id"));
             }
+            workflow.assignResponsible(c); workflow.synchronize(c);
         }
         Store.notify(db, id, "CUENTA", "Estado de cuenta: " + r.status() + ". " + Objects.toString(r.comment(), ""), "/profile");
     }

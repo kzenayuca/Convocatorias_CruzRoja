@@ -13,7 +13,7 @@ public final class ServiceRules {
         if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
             throw new IllegalArgumentException("La asistencia necesita una entrada y una salida válidas.");
         }
-        return Duration.between(checkIn, checkOut).toMinutes() / 60.0;
+        return Duration.between(checkIn, checkOut).toSeconds() / 3600.0;
     }
 
     public static double absenceDeduction(double scheduledHours, boolean justificationApproved) {
@@ -39,17 +39,31 @@ public final class ServiceRules {
         return to.isAfter(from) ? Duration.between(from, to).toSeconds() / 3600.0 : 0;
     }
 
-    public static LocalDateTime reviewDeadline(LocalDateTime requested) {
-        var result = requested;
-        int days = 0;
-        while (days < 5) {
-            result = result.plusDays(1);
-            if (result.getDayOfWeek().getValue() < 6) days++;
-        }
-        return result;
+    /** Más de diez minutos: el segundo 601 ya pertenece al minuto once. */
+    public static long lateSeconds(LocalDateTime start, LocalDateTime checkIn) {
+        return checkIn == null || !checkIn.isAfter(start) ? 0 : Duration.between(start, checkIn).toSeconds();
+    }
+
+    public static double tardyDeduction(LocalDateTime start, LocalDateTime end,
+                                        LocalDateTime checkIn, boolean justified) {
+        long seconds = lateSeconds(start, checkIn);
+        if (justified || seconds <= 600) return 0;
+        return Math.min(seconds / 3600.0, hours(start, end)) * 2;
+    }
+
+    /** Base programada; los primeros diez minutos tienen tolerancia. No genera extras. */
+    public static double serviceCredit(LocalDateTime start, LocalDateTime end,
+                                        LocalDateTime checkIn, LocalDateTime checkOut) {
+        if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) return 0;
+        var effectiveIn = lateSeconds(start, checkIn) <= 600 ? start : checkIn;
+        return recognizedHours(start, end, effectiveIn, checkOut);
     }
 
     public static boolean isLateJustification(LocalDateTime end, LocalDateTime submitted) {
         return submitted.isAfter(end.plusHours(JUSTIFICATION_DEADLINE_HOURS));
+    }
+
+    public static boolean canRequestCancellation(LocalDateTime start, LocalDateTime requested) {
+        return !requested.isAfter(start.minusHours(48));
     }
 }

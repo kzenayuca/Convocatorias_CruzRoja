@@ -25,7 +25,7 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 export function ProfilePage() {
   const { data: p, error } = useData<Row>('/profile', {});
   return <><p className="eyebrow">Tus datos</p><h1>Mi perfil</h1><ErrorNotice message={error}/>{p.id && <>
-    <div className="panel"><p>{p.name} {p.surnames} · {p.role} · {p.training_level} · {p.status}</p></div>
+    <div className="panel"><p>{p.name} {p.surnames} · {p.role} · {p.training_level} · {p.status}</p><p>Graduado: {p.graduated ? 'Sí' : 'No'} · Radioperador habilitado: {p.radio_qualified ? 'Sí' : 'No'} · Piloto habilitado: {p.pilot_qualified ? 'Sí' : 'No'}</p></div>
     <h2>Teléfono · cambio directo</h2><DataForm initial={p} fields={[{ name: 'phone', label: 'Teléfono', type: 'tel', max: 30 }]} submit={v => api('/profile/phone', 'PUT', v)}/>
     <h2>Otros datos · requieren aprobación</h2><p>Mientras jefatura revisa la solicitud, se conservan tus datos actuales.</p><DataForm key={`${p.name}-${p.email}`} initial={p} fields={profileFields} label="Solicitar cambio" submit={v => api('/profile/changes', 'POST', v)}/>
   </>}</>;
@@ -36,9 +36,10 @@ export function UsersPage() {
     <input aria-label="Buscar usuarios" placeholder="Nombre, DNI, rol o estado…" value={query} onChange={e => setQuery(e.target.value)}/>
     {changes.data.map(p => <section className="panel" key={p.user_id}><h2>Cambio de perfil</h2><p>{p.name} {p.surnames} · {p.email} · DNI {p.document} · {p.occupation}</p><DataForm fields={[{ name: 'decision', label: 'Decisión', options: ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo' }]} submit={v => api(`/users/${p.user_id}/changes`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/></section>)}
     <div className="list">{data.filter(p => `${p.name} ${p.email} ${p.document} ${p.role} ${p.status}`.toLowerCase().includes(query.toLowerCase())).map(p => <details className="card" key={`${p.id}-${p.status}-${p.role}-${p.training_level}`}><summary>{p.name} {p.surnames} · {p.status} · {p.role}</summary><p>{p.email} · DNI {p.document} · {p.phone} · {p.occupation}</p>
-      <DataForm initial={{ role: p.role, level: p.training_level, graduated: p.graduated ? 'SI' : 'NO', status: p.status, comment: p.review_comment }} fields={[
+      <DataForm initial={{ role: p.role, level: p.training_level, graduated: p.graduated ? 'SI' : 'NO', radioQualified: p.radio_qualified ? 'SI' : 'NO', pilotQualified: p.pilot_qualified ? 'SI' : 'NO', status: p.status, comment: p.review_comment }} fields={[
         { name: 'role', label: 'Rol', options: ['VOLUNTARIO', 'RECLUTADOR', 'JEFATURA'] }, { name: 'level', label: 'Formación', options: ['BASICO', 'INTERMEDIO', 'AVANZADO'] },
         { name: 'graduated', label: 'Graduado', options: ['NO', 'SI'] }, { name: 'status', label: 'Estado', options: ['PENDIENTE', 'ACTIVO', 'RECHAZADO', 'INACTIVO', 'SUSPENDIDO'] }, { name: 'comment', label: 'Motivo de la decisión' },
-      ]} submit={v => api(`/users/${p.id}`, 'PUT', { ...v, graduated: v.graduated === 'SI' })}/>
+        { name: 'radioQualified', label: 'Habilitación de radioperador verificada', options: ['NO', 'SI'] }, { name: 'pilotQualified', label: 'Habilitación de piloto verificada', options: ['NO', 'SI'] },
+      ]} submit={v => api(`/users/${p.id}`, 'PUT', { ...v, graduated: v.graduated === 'SI', radioQualified: v.radioQualified === 'SI', pilotQualified: v.pilotQualified === 'SI' })}/>
     </details>)}</div></>;
 }

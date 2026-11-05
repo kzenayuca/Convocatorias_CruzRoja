@@ -5,6 +5,8 @@ Un espacio simple para consultar servicios y organizar el voluntariado.
 
 **React + TypeScript · Spring Boot · PostgreSQL**
 
+**Versión 2.2.0:** puestos por servicio, inscripción automática y reglas de tardanza actualizadas, con el mismo estilo visual.
+
 ## 🚀 Arranque local
 
 Requiere Docker Desktop iniciado, Java 17+ con Maven y Node 22.12+.
@@ -47,8 +49,10 @@ Contraseña para todas las cuentas: **`convocatorias`**.
 
 ## 📌 Qué puedes probar
 
-Registro con aprobación de jefatura, perfiles, convocatorias con detalle, inscripciones persistentes, asistencia compartida, horas mensuales, justificaciones, comunicados y formularios de materiales. Hay **8 convocatorias y 10 perfiles demo**; consulta las cuentas adicionales en [DOCS.md](DOCS.md#datos-demo).
+Registro con aprobación de jefatura, convocatorias con puestos de responsable/socorrista/radioperador/piloto, inscripción automática sin cruces de horario, reemplazos, asistencia compartida y horas mensuales. Materiales como solicitud al almacén, con recepción/devolución y observaciones, sin inventario propio. Hay **8 convocatorias y 10 perfiles demo**; consulta las cuentas adicionales en [DOCS.md](DOCS.md#datos-demo).
 
 > **Prototipo local:** sin QR, recuperación de contraseña ni suspensiones automáticas. Conserva tus datos: no uses `docker compose down -v`. Reinicia el backend para aplicar las ampliaciones del esquema.
+
+Tolerancia: **10 minutos**. Superado ese límite se descuenta el doble del retraso; una justificación aprobada elimina la penalización, no acredita tiempo no trabajado. El plazo ordinario para justificar es **48 horas**.
 
 Las reglas y las pruebas **JUnit + Selenium** están en **[DOCS.md](DOCS.md)**. La interfaz conserva el estilo original; frontend y backend siguen en un solo repositorio.

@@ -19,7 +19,7 @@ public class NoticesController {
         return db.queryForList("SELECT * FROM notifications WHERE recipient_id=? ORDER BY is_read,id",actor().id());
     }
     @PostMapping("/notifications/{id}/read") public void read(@PathVariable UUID id) {
-        db.update("UPDATE notifications SET is_read=true WHERE id=? AND recipient_id=?",id,actor().id());
+        db.update("UPDATE notifications SET is_read=true,read_at=COALESCE(read_at,?) WHERE id=? AND recipient_id=?",now(),id,actor().id());
     }
     @PostMapping("/announcements") @Transactional
     public void publish(@Valid @RequestBody Announcement r) {
