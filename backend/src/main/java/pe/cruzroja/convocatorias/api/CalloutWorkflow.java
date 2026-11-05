@@ -4,28 +4,32 @@ import static pe.cruzroja.convocatorias.api.Store.*;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import pe.cruzroja.convocatorias.domain.TeamCapacity;
 
 /** Permisos, cupos y transiciones compartidos. Los cambios se invocan dentro de una transacción. */
 @Service
 public class CalloutWorkflow {
-    public static final List<String> POSITIONS = List.of("RESPONSABLE", "SOCORRISTA", "RADIOPERADOR", "PILOTO");
+    public static final List<String> POSITIONS = List.of("RESPONSABLE", "SOCORRISTA", "GRADUADO", "FORMACION", "RADIOPERADOR", "PILOTO");
     private final JdbcTemplate db;
     public CalloutWorkflow(JdbcTemplate db) { this.db=db; }
-    public Map<String,Object> locked(UUID id) { return one(db,"SELECT * FROM callouts WHERE id=? FOR UPDATE",id); }
+    public static final String FIELDS="id,title,start_at,end_at,deadline,kind,status,created_by,responsible_id,opened_at,closed_at,total_volunteers,socorrista_slots,graduate_slots,trainee_slots,radio_slots,pilot_slots,service_code,minimum_level,requirements,photo_uploaded_at";
+    public Map<String,Object> locked(UUID id) { return one(db,"SELECT "+FIELDS+" FROM callouts WHERE id=? FOR UPDATE",id); }
     public boolean canEdit(Map<String,Object> c) {
-        return chief() || manager() && actor().id().equals(c.get("created_by"));
+        return chief() || actor().graduated() && actor().role().equals("VOLUNTARIO") && actor().id().equals(c.get("responsible_id"));
     }
     public boolean canOperate(Map<String,Object> c) {
-        return chief() || actor().graduated() && actor().id().equals(c.get("responsible_id"));
+        return canEdit(c);
     }
-    public void editPermission(Map<String,Object> c) { require(canEdit(c),"Solo jefatura o el reclutador creador pueden gestionar la convocatoria."); }
+    public void editPermission(Map<String,Object> c) { require(canEdit(c),"Solo jefatura o el responsable graduado asignado pueden gestionar esta convocatoria."); }
     public void operationPermission(Map<String,Object> c) { require(canOperate(c),"Solo jefatura o el encargado asignado pueden operar el servicio."); }
     public void teamPermission(Map<String,Object> c) { require(canEdit(c)||canOperate(c),"No puedes consultar este equipo."); }
 
     public int capacity(Map<String,Object> c,String position) {
         return switch(position) {
             case "RESPONSABLE" -> "SERVICIO".equals(c.get("kind")) ? 1 : 0;
-            case "SOCORRISTA" -> ((Number)c.get("socorrista_slots")).intValue();
+            case "SOCORRISTA" -> total(c);
+            case "GRADUADO" -> ((Number)c.get("graduate_slots")).intValue();
+            case "FORMACION" -> total(c);
             case "RADIOPERADOR" -> ((Number)c.get("radio_slots")).intValue();
             case "PILOTO" -> ((Number)c.get("pilot_slots")).intValue();
             default -> 0;
@@ -35,19 +39,52 @@ public class CalloutWorkflow {
         return db.queryForObject("SELECT count(*) FROM enrollments WHERE callout_id=? AND position=? AND status='CONFIRMADA'",Integer.class,callout,position);
     }
     public List<Map<String,Object>> positions(Map<String,Object> c) {
-        return POSITIONS.stream().map(p -> Map.<String,Object>of("position",p,"required",capacity(c,p),"filled",occupied(id(c,"id"),p))).toList();
+        var team=team(c,null);
+        return List.of(
+            Map.of("position","TOTAL","required",total(c),"filled",team[0]),
+            Map.of("position","GRADUADO","required",capacity(c,"GRADUADO"),"filled",team[1]),
+            Map.of("position","RADIOPERADOR","required",capacity(c,"RADIOPERADOR"),"filled",team[2]),
+            Map.of("position","PILOTO","required",capacity(c,"PILOTO"),"filled",team[3]));
+    }
+    public int total(Map<String,Object> c) {
+        if(c.get("total_volunteers")!=null) return ((Number)c.get("total_volunteers")).intValue();
+        return ((Number)c.get("socorrista_slots")).intValue()+capacity(c,"GRADUADO")
+            +((Number)c.get("trainee_slots")).intValue()+capacity(c,"RADIOPERADOR")+capacity(c,"PILOTO")+occupied(id(c,"id"),"RESPONSABLE");
+    }
+    private TeamCapacity limits(Map<String,Object> c) {
+        return new TeamCapacity(total(c),capacity(c,"GRADUADO"),capacity(c,"RADIOPERADOR"),capacity(c,"PILOTO"));
+    }
+    private int[] team(Map<String,Object> c,UUID excluding) {
+        var rows=db.queryForList("SELECT e.volunteer_id,e.position,u.graduated FROM enrollments e JOIN users u ON u.id=e.volunteer_id WHERE e.callout_id=? AND e.status='CONFIRMADA'",c.get("id"));
+        int[] counts=new int[4];
+        for(var row:rows) {
+            if(Objects.equals(excluding,row.get("volunteer_id"))) continue;
+            counts[0]++; if(Boolean.TRUE.equals(row.get("graduated"))) counts[1]++;
+            if("RADIOPERADOR".equals(row.get("position"))) counts[2]++;
+            if("PILOTO".equals(row.get("position"))) counts[3]++;
+        }
+        return counts;
+    }
+    public boolean fits(Map<String,Object> c) {
+        var n=team(c,null); return limits(c).fits(n[0],n[1],n[2],n[3]);
+    }
+    public boolean canAdmit(Map<String,Object> c,UUID user,String position,UUID replacing) {
+        var n=team(c,replacing);
+        boolean graduated=Boolean.TRUE.equals(one(db,"SELECT graduated FROM users WHERE id=?",user).get("graduated"));
+        return limits(c).fits(n[0]+1,n[1]+(graduated?1:0),n[2]+(position.equals("RADIOPERADOR")?1:0),n[3]+(position.equals("PILOTO")?1:0));
     }
     public boolean complete(Map<String,Object> c) {
-        return POSITIONS.stream().allMatch(p -> occupied(id(c,"id"),p)>=capacity(c,p));
+        var n=team(c,null); return limits(c).complete(n[0],n[1],n[2],n[3]);
     }
     public boolean qualified(Map<String,Object> c,UUID user,String position) {
-        if(!POSITIONS.contains(position) || capacity(c,position)==0) return false;
-        var p=one(db,"SELECT u.status,u.graduated,p.training_level,p.radio_qualified,p.pilot_qualified FROM users u JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.id=?",user);
+        if(!POSITIONS.contains(position) || (!Set.of("GRADUADO","FORMACION").contains(position) && capacity(c,position)==0)) return false;
+        var p=one(db,"SELECT u.status,u.role,u.graduated,p.training_level,p.radio_qualified,p.pilot_qualified FROM users u JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.id=?",user);
         var levels=List.of("BASICO","INTERMEDIO","AVANZADO");
         if(!"ACTIVO".equals(p.get("status")) || levels.indexOf(p.get("training_level"))<levels.indexOf(c.get("minimum_level"))) return false;
-        if(!position.equals("SOCORRISTA") && !Boolean.TRUE.equals(p.get("graduated"))) return false;
+        if(!Set.of("SOCORRISTA","FORMACION").contains(position) && !Boolean.TRUE.equals(p.get("graduated"))) return false;
         return switch(position) {
-            case "RESPONSABLE" -> Boolean.TRUE.equals(p.get("graduated"));
+            case "RESPONSABLE" -> Boolean.TRUE.equals(p.get("graduated")) && "VOLUNTARIO".equals(p.get("role"));
+            case "FORMACION" -> !Boolean.TRUE.equals(p.get("graduated"));
             case "RADIOPERADOR" -> Boolean.TRUE.equals(p.get("radio_qualified"));
             case "PILOTO" -> Boolean.TRUE.equals(p.get("pilot_qualified"));
             default -> true;
@@ -61,7 +98,7 @@ public class CalloutWorkflow {
             """,Integer.class,user,c.get("id"),time(c,"end_at"),time(c,"start_at"))>0;
     }
     public boolean compatible(Map<String,Object> c,UUID user) {
-        return !overlap(c,user) && POSITIONS.stream().anyMatch(p -> qualified(c,user,p));
+        return !overlap(c,user) && POSITIONS.stream().filter(p -> !p.equals("RESPONSABLE")).anyMatch(p -> qualified(c,user,p));
     }
     public void synchronize(Map<String,Object> c) {
         if(!Set.of("ABIERTA","CERRADA").contains(c.get("status")) || c.get("opened_at")!=null) return;
@@ -78,7 +115,7 @@ public class CalloutWorkflow {
             recipients.add(id(e,"volunteer_id"));
         if(c.get("created_by")!=null) recipients.add(id(c,"created_by"));
         if(c.get("responsible_id")!=null) recipients.add(id(c,"responsible_id"));
-        for(var user:recipients) Store.notify(db,user,"CONVOCATORIA",c.get("title")+": "+message,"/services");
+        for(var user:recipients) Store.notify(db,user,"CONVOCATORIA",c.get("title")+": "+message,"/callouts/"+c.get("id"));
     }
     public void cancel(Map<String,Object> c,String reason) {
         db.update("UPDATE callouts SET status='CANCELADA',observations=? WHERE id=?",reason,c.get("id"));

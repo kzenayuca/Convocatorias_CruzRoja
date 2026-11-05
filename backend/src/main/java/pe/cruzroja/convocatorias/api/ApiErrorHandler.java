@@ -25,7 +25,11 @@ public class ApiErrorHandler {
 
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     ResponseEntity<Map<String, String>> duplicate() {
-        return ResponseEntity.status(409).body(Map.of("mensaje", "Los datos ya están registrados o no son válidos. Revise correo y DNI."));
+        return ResponseEntity.status(409).body(Map.of("mensaje", "Los datos ya están registrados o no son válidos. Revise código del servicio, correo y DNI."));
+    }
+    @ExceptionHandler(javax.imageio.IIOException.class)
+    ResponseEntity<Map<String,String>> corruptPhoto() {
+        return ResponseEntity.badRequest().body(Map.of("mensaje","La foto está dañada o no es una imagen JPG/PNG válida."));
     }
 
     @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)

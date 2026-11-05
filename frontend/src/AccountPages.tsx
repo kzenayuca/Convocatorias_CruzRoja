@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { api, Session, Row, useData } from './api';
+import { Link } from 'react-router-dom';
+import { api, date, Session, Row, useData } from './api';
 import { DataForm, ErrorNotice, Field } from './components';
+import { HoursProgress } from './HoursProgress';
 
 const profileFields: Field[] = [
   { name: 'name', label: 'Nombres', max: 120 }, { name: 'surnames', label: 'Apellidos', max: 160 },
@@ -24,11 +26,27 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 }
 export function ProfilePage() {
   const { data: p, error } = useData<Row>('/profile', {});
-  return <><p className="eyebrow">Tus datos</p><h1>Mi perfil</h1><ErrorNotice message={error}/>{p.id && <>
-    <div className="panel"><p>{p.name} {p.surnames} · {p.role} · {p.training_level} · {p.status}</p><p>Graduado: {p.graduated ? 'Sí' : 'No'} · Radioperador habilitado: {p.radio_qualified ? 'Sí' : 'No'} · Piloto habilitado: {p.pilot_qualified ? 'Sí' : 'No'}</p></div>
-    <h2>Teléfono · cambio directo</h2><DataForm initial={p} fields={[{ name: 'phone', label: 'Teléfono', type: 'tel', max: 30 }]} submit={v => api('/profile/phone', 'PUT', v)}/>
-    <h2>Otros datos · requieren aprobación</h2><p>Mientras jefatura revisa la solicitud, se conservan tus datos actuales.</p><DataForm key={`${p.name}-${p.email}`} initial={p} fields={profileFields} label="Solicitar cambio" submit={v => api('/profile/changes', 'POST', v)}/>
+  const [editing, setEditing] = useState(false); const photos = useData<Row[]>('/profile/photos', []);
+  return <><div className="page-heading"><div><p className="eyebrow">Tu espacio personal</p><h1>Mi perfil</h1><p className="lead">Tus datos, formación y recuerdos del voluntariado.</p></div><button className="button secondary" onClick={() => setEditing(!editing)}>{editing ? 'Cerrar edición' : 'Modificar'}</button></div><ErrorNotice message={error || photos.error}/>{p.id && <>
+    <section className="profile-hero"><span className="avatar large-avatar">{p.name.charAt(0)}</span><div><h2>{p.name} {p.surnames}</h2><p>{p.occupation || 'Voluntariado Cruz Roja'}</p><span className="badge">{p.role}</span> <span className="badge">{p.status}</span></div></section>
+    <section className="section-block"><h2>Información personal</h2><dl className="info-grid"><div><dt>Correo electrónico</dt><dd>{p.email}</dd></div><div><dt>DNI</dt><dd>{p.document}</dd></div><div><dt>Teléfono</dt><dd>{p.phone || 'No registrado'}</dd></div><div><dt>Profesión u ocupación</dt><dd>{p.occupation || 'No registrada'}</dd></div></dl></section>
+    <section className="section-block"><h2>Formación y habilitaciones</h2><dl className="info-grid"><div><dt>Nivel</dt><dd>{p.training_level}</dd></div><div><dt>Condición</dt><dd>{p.graduated ? 'Graduado' : 'En formación'}</dd></div><div><dt>Radioperador</dt><dd>{p.radio_qualified ? 'Habilitado por jefatura' : 'Sin habilitación'}</dd></div><div><dt>Piloto</dt><dd>{p.pilot_qualified ? 'Habilitado por jefatura' : 'Sin habilitación'}</dd></div></dl><p>Responsable es una función por servicio, solo para voluntarios graduados asignados por jefatura.</p><Link className="link" to="/services">Ver mis servicios y horas →</Link></section>
+    <HoursProgress/>
+    {editing && <section className="section-block"><h2>Modificar información</h2><h3>Teléfono · cambio directo</h3><DataForm initial={p} fields={[{ name: 'phone', label: 'Teléfono', type: 'tel', max: 30 }]} label="Guardar teléfono" submit={v => api('/profile/phone', 'PUT', v)}/>
+      <h3>Otros datos · requieren aprobación</h3><p>Mientras jefatura revisa la solicitud, se conservan tus datos actuales.</p><DataForm key={`${p.name}-${p.email}`} initial={p} fields={profileFields} label="Solicitar cambio" submit={v => api('/profile/changes', 'POST', v)}/>
+    </section>}
+    {!!photos.data.length && <section className="section-block"><h2>Mis fotos de equipo</h2><p className="muted">Servicios en los que participaste. Solo el responsable asignado y jefatura suben fotos.</p><div className="callout-grid">{photos.data.map(c => <article className="card" key={c.id}><h3>{c.title}</h3><p>{date(c.start_at)}</p><details className="photo-view"><summary>Ver foto</summary><img loading="lazy" src={`/api/v1/callouts/${c.id}/photo`} alt={`Equipo de ${c.title}`}/></details><Link className="link" to={`/callouts/${c.id}`}>Ver convocatoria →</Link></article>)}</div></section>}
   </>}</>;
+}
+export function AdministrationPage() {
+  const settings = useData<Row>('/administration', {}); const codes = useData<Row[]>('/service-codes', []); const [type, setType] = useState('');
+  const types = [...new Set(codes.data.map(c => c.service_type))];
+  return <><p className="eyebrow">Jefatura</p><h1>Administración</h1><p className="lead">Requisitos institucionales e historial de códigos.</p><ErrorNotice message={settings.error || codes.error}/>
+    <section className="section-block"><h2>Metas de horas por condición</h2><p>Dos metas generales de saldo acumulado: una para formación y otra para graduados. No son mensuales ni individuales. Cambiarlas no modifica asistencias, saldos o cierres anteriores, ni gradúa automáticamente.</p><dl className="info-grid"><div><dt>En formación</dt><dd>{settings.data.training_hours ? `${settings.data.training_hours} h` : 'Sin configurar'}</dd></div><div><dt>Graduados</dt><dd>{settings.data.graduate_hours ? `${settings.data.graduate_hours} h` : 'Sin configurar'}</dd></div></dl><DataForm key={`${settings.data.training_hours}-${settings.data.graduate_hours}`} fields={[{ name: 'trainingHours', label: 'Meta para voluntarios en formación (horas acumuladas)', type: 'number', min: 0.01, max: 100000, step: '0.01' }, { name: 'graduateHours', label: 'Meta para voluntarios graduados (horas acumuladas)', type: 'number', min: 0.01, max: 100000, step: '0.01' }]} initial={{ trainingHours: settings.data.training_hours, graduateHours: settings.data.graduate_hours }} label="Guardar metas generales" submit={v => api('/administration', 'PUT', v)}/></section>
+    <section className="section-block"><h2>Códigos recientes por tipo</h2><p>Se asignan manualmente en cada convocatoria. Un código usado queda reservado y no se reutiliza en otro servicio. Los prefijos automáticos quedan como trabajo futuro.</p><label className="field">Tipo de servicio<select value={type} onChange={e => setType(e.target.value)}><option value="">Todos los tipos</option>{types.map(t => <option key={t}>{t}</option>)}</select></label>
+      {codes.data.filter(c => !type || c.service_type === type).map(c => <article className="preview-row" key={c.id}><Link className="link" to={`/callouts/${c.callout_id}`}>{c.service_code}</Link><p>{c.service_type} · {date(c.assigned_at)}</p><small>{c.assigned_name || 'Registro migrado'}</small></article>)}
+    </section>
+  </>;
 }
 export function UsersPage() {
   const { data, error } = useData<Row[]>('/users', []); const changes = useData<Row[]>('/users/changes', []); const [query, setQuery] = useState('');
@@ -37,7 +55,7 @@ export function UsersPage() {
     {changes.data.map(p => <section className="panel" key={p.user_id}><h2>Cambio de perfil</h2><p>{p.name} {p.surnames} · {p.email} · DNI {p.document} · {p.occupation}</p><DataForm fields={[{ name: 'decision', label: 'Decisión', options: ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo' }]} submit={v => api(`/users/${p.user_id}/changes`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/></section>)}
     <div className="list">{data.filter(p => `${p.name} ${p.email} ${p.document} ${p.role} ${p.status}`.toLowerCase().includes(query.toLowerCase())).map(p => <details className="card" key={`${p.id}-${p.status}-${p.role}-${p.training_level}`}><summary>{p.name} {p.surnames} · {p.status} · {p.role}</summary><p>{p.email} · DNI {p.document} · {p.phone} · {p.occupation}</p>
       <DataForm initial={{ role: p.role, level: p.training_level, graduated: p.graduated ? 'SI' : 'NO', radioQualified: p.radio_qualified ? 'SI' : 'NO', pilotQualified: p.pilot_qualified ? 'SI' : 'NO', status: p.status, comment: p.review_comment }} fields={[
-        { name: 'role', label: 'Rol', options: ['VOLUNTARIO', 'RECLUTADOR', 'JEFATURA'] }, { name: 'level', label: 'Formación', options: ['BASICO', 'INTERMEDIO', 'AVANZADO'] },
+        { name: 'role', label: 'Rol de acceso (responsable se asigna por servicio)', options: ['VOLUNTARIO', 'JEFATURA'] }, { name: 'level', label: 'Formación', options: ['BASICO', 'INTERMEDIO', 'AVANZADO'] },
         { name: 'graduated', label: 'Graduado', options: ['NO', 'SI'] }, { name: 'status', label: 'Estado', options: ['PENDIENTE', 'ACTIVO', 'RECHAZADO', 'INACTIVO', 'SUSPENDIDO'] }, { name: 'comment', label: 'Motivo de la decisión' },
         { name: 'radioQualified', label: 'Habilitación de radioperador verificada', options: ['NO', 'SI'] }, { name: 'pilotQualified', label: 'Habilitación de piloto verificada', options: ['NO', 'SI'] },
       ]} submit={v => api(`/users/${p.id}`, 'PUT', { ...v, graduated: v.graduated === 'SI', radioQualified: v.radioQualified === 'SI', pilotQualified: v.pilotQualified === 'SI' })}/>

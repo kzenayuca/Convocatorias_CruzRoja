@@ -1,94 +1,153 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, changed, date, delay, localInput, manager, Row, Session, useData } from './api';
-import { Action, DataForm, ErrorNotice, Field } from './components';
+import { Action, DataForm, ErrorNotice, Field, PdfDownload } from './components';
 
-export const positionNames: Record<string, string> = { RESPONSABLE: 'Responsable', SOCORRISTA: 'Socorrista', RADIOPERADOR: 'Radioperador', PILOTO: 'Piloto' };
-const statuses: Record<string, string> = { BORRADOR: 'Borrador', ABIERTA: 'Abierta', CERRADA: 'Completa · confirmada', CANCELADA: 'Cancelada', FINALIZADA: 'Finalizada', PUBLICADA: 'Publicada (histórico)', CONFIRMADA: 'Confirmada (histórico)' };
+export const positionNames: Record<string, string> = { TOTAL: 'Total de voluntarios', RESPONSABLE: 'Responsable', SOCORRISTA: 'Voluntario · graduado o en formación', GRADUADO: 'Voluntario graduado', FORMACION: 'En formación · solo reemplazo histórico', RADIOPERADOR: 'Radioperador', PILOTO: 'Piloto' };
+const statuses: Record<string, string> = { BORRADOR: 'Borrador', ABIERTA: 'Abierta', CERRADA: 'Completa', CANCELADA: 'Cancelada', FINALIZADA: 'Finalizada', PUBLICADA: 'Publicada (histórico)', CONFIRMADA: 'Confirmada (histórico)' };
 const callFields: Field[] = [
-  { name: 'code', label: 'Código único del servicio (incluye el año)', max: 40 }, { name: 'title', label: 'Título', max: 150 },
-  { name: 'description', label: 'Descripción', type: 'textarea', max: 5000 },
+  { name: 'code', label: 'Código único del servicio · asignado por jefatura', optional: true, max: 40 },
+  { name: 'title', label: 'Título', max: 150 }, { name: 'description', label: 'Descripción', type: 'textarea', max: 5000 },
   { name: 'kind', label: 'Convocatoria', options: ['SERVICIO', 'INGRESO'] },
-  { name: 'serviceType', label: 'Tipo de servicio', max: 100 }, { name: 'area', label: 'Área', max: 120 },
+  { name: 'serviceType', label: 'Tipo de servicio (texto libre)', max: 100 }, { name: 'area', label: 'Área', max: 120 },
   { name: 'start', label: 'Inicio (hora de Perú)', type: 'datetime-local' }, { name: 'end', label: 'Fin (hora de Perú)', type: 'datetime-local' },
   { name: 'deadline', label: 'Completar puestos antes de (hora de Perú)', type: 'datetime-local' },
   { name: 'location', label: 'Lugar' }, { name: 'contact', label: 'Contacto de emergencia' },
-  { name: 'requirements', label: 'Requisitos (uno por línea)', type: 'textarea', max: 5000 },
+  { name: 'requirements', label: 'Requisitos declarados (uno por línea; verificación personal por jefatura)', type: 'textarea', max: 5000 },
   { name: 'level', label: 'Nivel mínimo', options: ['BASICO', 'INTERMEDIO', 'AVANZADO'] },
-  { name: 'socorristaSlots', label: 'Puestos de socorrista / vacantes de ingreso', type: 'number', min: 1, max: 10000 },
-  { name: 'radioSlots', label: 'Radioperador (0 = no aplica, 1 = obligatorio)', type: 'number', min: 0, max: 1 },
-  { name: 'pilotSlots', label: 'Piloto (0 = no aplica, 1 = obligatorio)', type: 'number', min: 0, max: 1 },
+  { name: 'totalVolunteers', label: 'Total de voluntarios (incluye responsable, piloto y radioperador)', type: 'number', min: 1, max: 10000 },
+  { name: 'graduateSlots', label: 'Mínimo de graduados dentro del total (0 = indistinto)', type: 'number', min: 0, max: 10000 },
+  { name: 'radioSlots', label: 'Radioperador requerido dentro del total (0 o 1)', type: 'number', min: 0, max: 1 },
+  { name: 'pilotSlots', label: 'Piloto requerido dentro del total (0 o 1)', type: 'number', min: 0, max: 1 },
 ];
-function Positions({ positions }: { positions: Row[] }) {
-  return <div className="grid">{positions.map(p => <article className="card" key={p.position}><p className="eyebrow">{positionNames[p.position]}</p><div className="stat">{p.required ? `${p.filled}/${p.required}` : '—'}</div><p>{p.required ? Math.max(0, p.required - p.filled) ? `Faltan ${Math.max(0, p.required - p.filled)}` : 'Puesto cubierto' : 'No aplica'}</p></article>)}</div>;
+export function Positions({ positions }: { positions: Row[] }) {
+  return <div className="positions-grid">{positions.filter(p => p.position !== 'RESPONSABLE' && p.required > 0).map(p => <article className="position-card" key={p.position}>
+    <p className="eyebrow">{p.position === 'GRADUADO' ? 'Graduados dentro del total · mínimo' : positionNames[p.position]}</p><div className="stat">{p.filled}<small> / {p.required}</small></div>
+    <p>{p.filled >= p.required ? 'Requisito cubierto' : `${p.required - p.filled} pendientes`}</p>
+  </article>)}</div>;
 }
 export function CalloutsPage({ user, history = false }: { user: Session; history?: boolean }) {
   const { data, error, loading } = useData<Row[]>(`/callouts?history=${history}`, []);
   const [query, setQuery] = useState(''); const [create, setCreate] = useState(false); const navigate = useNavigate();
-  const filtered = data.filter(c => `${c.service_code} ${c.title} ${c.description} ${c.location} ${statuses[c.status]} ${c.minimum_level}`.toLowerCase().includes(query.toLowerCase()));
-  return <><div className="page-heading"><div><p className="eyebrow">{history ? 'Servicios anteriores' : 'Encuentra tu próxima actividad'}</p><h1>{history ? 'Historial' : 'Convocatorias'}</h1><p className="lead">{history ? 'Participaciones y servicios según tus permisos.' : 'Puestos disponibles según tu formación y sin cruces de horario.'}</p></div>{manager(user) && !history && <button className="button" onClick={() => setCreate(!create)}>Nueva convocatoria</button>}</div>
-    <ErrorNotice message={error}/>{create && <><p>Un servicio requiere un responsable graduado y todos los puestos indicados. Las horas programadas se calculan a partir del horario. En ingreso no se solicita responsable, piloto ni radioperador.</p><DataForm fields={callFields} initial={{ socorristaSlots: 3, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/></>}
-    <div className="toolbar"><input aria-label="Buscar convocatorias" placeholder="Busca por código, actividad, lugar o estado…" value={query} onChange={e => setQuery(e.target.value)} list="callout-suggestions"/><datalist id="callout-suggestions">{filtered.slice(0, 4).map(c => <option key={c.id} value={c.title}/>)}</datalist><button className="button secondary" onClick={() => setQuery('')}>Limpiar</button></div>
-    <div className="list">{filtered.map(c => <article className="list-item" key={c.id}><div><span className={`badge ${c.status === 'CANCELADA' ? 'red' : ''}`}>{statuses[c.status] || c.status}</span><h2><Link to={`/callouts/${c.id}`}>{c.title}</Link></h2><p>{c.service_code} · {c.service_type} · 📍 {c.location}</p><p>🗓 {date(c.start_at)} · {Number(c.planned_hours).toLocaleString('es-PE')} h</p><small>{c.positions.filter((p: Row) => p.required > 0).map((p: Row) => `${positionNames[p.position]} ${p.filled}/${p.required}`).join(' · ')}</small></div><Link className="button" to={`/callouts/${c.id}`}>Ver detalle</Link></article>)}</div>
-    {!loading && !filtered.length && <div className="empty">No hay convocatorias para mostrar.</div>}
+  const filtered = data.filter(c => `${c.service_code ?? ''} ${c.title} ${c.service_type} ${c.location} ${statuses[c.status]}`.toLowerCase().includes(query.toLowerCase()));
+  return <><div className="page-heading"><div><p className="eyebrow">{history ? 'Tu recorrido' : 'Encuentra tu próxima actividad'}</p><h1>{history ? 'Historial' : 'Convocatorias'}</h1><p className="lead">{history ? 'Servicios anteriores según tus permisos.' : 'Encuentra un puesto según tu formación y disponibilidad.'}</p></div>{manager(user) && !history && <button className="button" onClick={() => setCreate(!create)}>{create ? 'Cerrar formulario' : 'Nueva convocatoria'}</button>}</div>
+    <ErrorNotice message={error}/>{create && <section className="section-block"><h2>Preparar convocatoria</h2><p>Voluntario = graduado o en formación. Total 4 y mínimo 1 graduado significa 4 personas, no 5. Responsable, piloto y radioperador cuentan dentro del total y pueden cubrir el mínimo de graduados. El responsable sigue siendo opcional y lo asigna jefatura.</p>
+      <DataForm fields={callFields.filter(f => user.role === 'JEFATURA' || f.name !== 'code')} initial={{ totalVolunteers: 4, graduateSlots: 0, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/>
+    </section>}
+    <div className="toolbar"><input aria-label="Buscar convocatorias" placeholder="Código, actividad, tipo o lugar…" value={query} onChange={e => setQuery(e.target.value)}/><button className="button secondary" onClick={() => setQuery('')}>Limpiar</button></div>
+    <div className="callout-grid">{filtered.map(c => <article className="card callout-card" key={c.id}><div className="card-topline"><span className="eyebrow">{c.service_code || 'Código pendiente'}</span><span className={`badge ${c.status === 'CANCELADA' ? 'red' : ''}`}>{statuses[c.status] || c.status}</span></div>
+      <p className="muted">{c.service_type}</p><h2><Link to={`/callouts/${c.id}`}>{c.title}</Link></h2><p>📍 {c.location}</p><p>🗓 {date(c.start_at)}</p><p>{Number(c.planned_hours).toLocaleString('es-PE')} horas programadas</p>
+      <p className="muted">Total: {c.positions.find((p: Row) => p.position === 'TOTAL')?.filled}/{c.total_volunteers} voluntarios · Mínimo {c.graduate_slots} graduados dentro del total</p>
+      <Link className="button secondary" to={`/callouts/${c.id}`}>Ver detalle</Link>
+    </article>)}</div>{!loading && !filtered.length && <div className="empty">No hay convocatorias para mostrar.</div>}
   </>;
 }
 export function DetailPage({ user }: { user: Session }) {
   const { id } = useParams(); const { data: c, error, loading } = useData<Row>(`/callouts/${id}`, {});
-  const [checked, setChecked] = useState<string[]>([]); const [edit, setEdit] = useState(false);
+  const [checked, setChecked] = useState<number[]>([]); const [edit, setEdit] = useState(false);
   useEffect(() => { setChecked([]); setEdit(false); }, [id, c.requirements]);
   if (loading && !c.id) return <p>Cargando convocatoria…</p>;
   if (error) return <ErrorNotice message={error}/>;
   const requirements = String(c.requirements ?? '').split('\n').filter(Boolean);
   const future = new Date(c.start_at).getTime() > Date.now();
-  const available = ['ABIERTA', 'CERRADA'].includes(c.status) && future;
-  const editable = c.can_edit && future && ['BORRADOR', 'ABIERTA', 'CERRADA'].includes(c.status);
-  const positionOptions = (c.eligible_positions ?? []).map((p: string) => ({ value: p, label: `${positionNames[p]} · ${Math.max(0, (c.positions.find((s: Row) => s.position === p)?.required ?? 0) - (c.positions.find((s: Row) => s.position === p)?.filled ?? 0))} disponibles` }));
-  return <><Link className="link" to="/callouts">← Volver a la lista</Link><div className="page-heading"><div><p className="eyebrow">{c.service_code} · {c.kind} · {c.area}</p><h1>{c.title}</h1><p className="lead">{c.description}</p></div><span className="badge">{statuses[c.status] || c.status}</span></div>
-    <h2>Vacantes disponibles</h2><Positions positions={c.positions ?? []}/>
-    <section className="panel"><p>{c.service_type} · 📍 {c.location}</p><p>Inicio: {date(c.start_at)} · Fin: {date(c.end_at)}</p><p>Horas programadas: <b>{Number(c.planned_hours).toLocaleString('es-PE')} h</b> · Nivel: {c.minimum_level}</p><p>Completar puestos antes de: {date(c.deadline)}</p><p>Responsable: {c.responsible_name || 'Puesto pendiente'}</p><p>Contacto: {c.contact || 'Consultar al coordinador'}</p><p>Observaciones: {c.observations || 'Sin observaciones'}</p></section>
-    {available && positionOptions.length > 0 && <section className="card"><h2>Verificación de requisitos</h2><p>La inscripción normal se acepta inmediatamente si cumples las condiciones. No hay lista de espera. Para reemplazar, el titular debe haber solicitado cancelación y el encargado debe aprobarte.</p>{requirements.map((r, i) => <label className="requirement" key={i}><input type="checkbox" checked={checked.includes(r)} onChange={e => setChecked(old => e.target.checked ? [...old, r] : old.filter(x => x !== r))}/>{r}</label>)}
-      {checked.length === requirements.length ? <DataForm fields={[{ name: 'position', label: 'Puesto', options: positionOptions }, { name: 'replacementFor', label: 'Código de inscripción a reemplazar (solo para reemplazo)', optional: true }]} label="Inscribirme" submit={v => api(`/callouts/${id}/enrollments`, 'POST', { requirementsAccepted: true, position: v.position, replacementFor: v.replacementFor || null })}/> : <p>Debes marcar todos los requisitos para inscribirte.</p>}
-      <Link className="link" to="/services">Consultar mi inscripción →</Link>
-    </section>}
-    {editable && <><h2>Gestión de convocatoria</h2><div className="toolbar">{c.status === 'BORRADOR' && <Action path={`/callouts/${id}/status`} body={{ status: 'ABIERTA' }}>Publicar</Action>}<button className="button secondary" onClick={() => setEdit(!edit)}>Editar datos</button><Action path={`/callouts/${id}/status`} body={{ status: 'CANCELADA' }}>Cancelar convocatoria</Action></div>
-      {edit && <DataForm fields={callFields} initial={{ ...c, code: c.service_code, serviceType: c.service_type, start: localInput(c.start_at), end: localInput(c.end_at), deadline: localInput(c.deadline), level: c.minimum_level, socorristaSlots: c.socorrista_slots, radioSlots: c.radio_slots, pilotSlots: c.pilot_slots }} submit={v => api(`/callouts/${id}`, 'PUT', v)}/>}
-    </>}
+  const available = ['ABIERTA', 'CERRADA'].includes(c.status) && future && (!c.my_enrollment || ['PENDIENTE', 'EXPIRADA'].includes(c.my_enrollment.status));
+  const editable = c.can_edit && future && !c.opened_at && ['BORRADOR', 'ABIERTA', 'CERRADA'].includes(c.status);
+  const positionOptions = (c.eligible_positions ?? []).map((p: string) => ({ value: p, label: positionNames[p] }));
+  return <div className="detail-page"><Link className="link" to="/callouts">← Volver a convocatorias</Link>
+    <section className="service-hero"><div className="card-topline"><p className="eyebrow">{c.service_code || 'Código pendiente de jefatura'} · {c.area}</p><span className="badge">{statuses[c.status] || c.status}</span></div>
+      <h1>{c.title}</h1><p className="lead">{c.description}</p><div className="toolbar"><span className="pill">{c.service_type}</span><span className="pill">{c.execution}</span><span className="pill">Cobertura {c.coverage === 'COMPLETA' ? 'completa' : 'pendiente'}</span></div>
+      {c.my_enrollment && <p className="participation-note">Tu inscripción: <b>{c.my_enrollment.status === 'CONFIRMADA' ? 'ACEPTADA' : c.my_enrollment.status}</b> · {positionNames[c.my_enrollment.position]} <Link className="link" to="/services">Consultar mi inscripción →</Link></p>}
+    </section>
+    <section className="section-block"><h2>Información del servicio</h2><dl className="info-grid">
+      <div><dt>Inicio · hora de Perú</dt><dd>{date(c.start_at)}</dd></div><div><dt>Fin · hora de Perú</dt><dd>{date(c.end_at)}</dd></div>
+      <div><dt>Lugar</dt><dd>{c.location}</dd></div><div><dt>Horas programadas</dt><dd>{Number(c.planned_hours).toLocaleString('es-PE')} h</dd></div>
+      <div><dt>Responsable</dt><dd>{c.responsible_name || 'Sin asignar'}</dd></div><div><dt>Contacto</dt><dd>{c.contact || 'Consultar a jefatura'}</dd></div>
+      <div><dt>Inscripciones hasta</dt><dd>{date(c.deadline)}</dd></div><div><dt>Nivel mínimo</dt><dd>{c.minimum_level}</dd></div>
+    </dl>{c.observations && <div className="soft-panel"><h3>Indicaciones</h3><p className="multiline">{c.observations}</p></div>}</section>
+    <section className="section-block"><h2>Vacantes disponibles</h2><p className="muted">Cada persona cuenta una sola vez. Responsable, piloto y radioperador están incluidos en el total. El mínimo de graduados y las funciones son requisitos dentro de ese total, no plazas adicionales. Voluntario admite graduados y personas en formación; voluntario graduado, solo graduados.</p><Positions positions={c.positions ?? []}/></section>
+    <section className="section-block"><h2>Verificación de requisitos</h2><p>Jefatura verifica personalmente las declaraciones. El sistema comprueba tu formación, habilitaciones, cupo y horario.</p>
+      {available && positionOptions.length ? <>{requirements.map((r, i) => <label className="requirement" key={i}><input type="checkbox" checked={checked.includes(i)} onChange={e => setChecked(old => e.target.checked ? [...old, i] : old.filter(x => x !== i))}/>{r}</label>)}
+        {checked.length === requirements.length ? <DataForm fields={[{ name: 'position', label: 'Puesto', options: positionOptions }, { name: 'replacementFor', label: 'Código del titular (solo reemplazos)', optional: true }]} label="Inscribirme" submit={v => api(`/callouts/${id}/enrollments`, 'POST', { requirementsAccepted: true, position: v.position, replacementFor: v.replacementFor || null })}/> : <p>Marca todos los requisitos para continuar.</p>}
+        <p className="muted">Inscripción automática para cuentas validadas. Los reemplazos requieren revisión del encargado o jefatura.</p>
+      </> : <><ul className="requirements-list">{requirements.map((r, i) => <li key={i}>{r}</li>)}</ul><p className="muted">{c.my_enrollment ? 'Consulta el estado de tu participación en Mis servicios.' : 'No hay una inscripción disponible para tu perfil en este momento.'}</p></>}
+    </section>
+    {(c.has_photo || c.can_upload_photo) && <section className="section-block"><h2>Recuerdo del equipo</h2>{c.has_photo && <details className="photo-view"><summary>Ver foto del equipo</summary><a href={`/api/v1/callouts/${id}/photo`} target="_blank" rel="noreferrer"><img loading="lazy" src={`/api/v1/callouts/${id}/photo?v=${encodeURIComponent(c.photo_uploaded_at ?? '')}`} alt={`Equipo de ${c.title}`}/></a></details>}{c.can_upload_photo && <details><summary>{c.has_photo ? 'Actualizar foto' : 'Subir foto del equipo'}</summary><PhotoForm id={id!}/></details>}</section>}
+    {editable && <details className="section-block management"><summary>Gestionar convocatoria</summary><div className="toolbar">{c.status === 'BORRADOR' && <Action path={`/callouts/${id}/status`} body={{ status: 'ABIERTA' }}>Publicar</Action>}<button className="button secondary" onClick={() => setEdit(!edit)}>Editar datos</button><Action path={`/callouts/${id}/status`} body={{ status: 'CANCELADA' }}>Cancelar convocatoria</Action></div>
+      {edit && <DataForm fields={callFields.filter(f => user.role === 'JEFATURA' || f.name !== 'code')} initial={{ ...c, code: c.service_code, serviceType: c.service_type, start: localInput(c.start_at), end: localInput(c.end_at), deadline: localInput(c.deadline), level: c.minimum_level, totalVolunteers: c.total_volunteers, graduateSlots: c.graduate_slots, radioSlots: c.radio_slots, pilotSlots: c.pilot_slots }} submit={v => api(`/callouts/${id}`, 'PUT', { ...v, code: user.role === 'JEFATURA' ? v.code : c.service_code })}/>}
+    </details>}
+    {user.role === 'JEFATURA' && editable && <ResponsiblePanel id={id!} current={c.responsible_id}/>}
+    {user.role === 'JEFATURA' && editable && ['ABIERTA', 'CERRADA'].includes(c.status) && new Date(c.deadline).getTime() > Date.now() && <AssignmentPanel id={id!} requirements={c.requirements}/>}
     {c.can_view_team && <TeamPage id={id!} user={user} callout={c}/>}
-  </>;
+  </div>;
+}
+function ResponsiblePanel({ id, current }: { id: string; current?: string }) {
+  const candidates = useData<Row[]>('/responsible-candidates', []);
+  return <details className="section-block"><summary>Asignar responsable · jefatura</summary><p>Solo un voluntario graduado activo que cumpla los requisitos y no tenga cruce horario. Es una función para este servicio, no un rol global. Cuenta dentro del total y del mínimo de graduados. Puedes convertir a un voluntario general aceptado sin duplicarlo, no al piloto/radioperador. Retirarlo libera su plaza. Verifica también los requisitos declarados antes de asignarlo.</p><ErrorNotice message={candidates.error}/>
+    <DataForm key={current ?? 'none'} fields={[{ name: 'userId', label: 'Responsable', optional: true, options: [{ value: '', label: 'Sin responsable' }, ...candidates.data.map(u => ({ value: u.id, label: `${u.name} ${u.surnames}` }))] }]} initial={{ userId: current ?? '' }} submit={v => api(`/callouts/${id}/responsible`, 'PUT', { userId: v.userId || null })}/>
+  </details>;
+}
+function AssignmentPanel({ id, requirements }: { id: string; requirements: string }) {
+  const [position, setPosition] = useState('SOCORRISTA'); const [userId, setUserId] = useState('');
+  const [verified, setVerified] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState('');
+  const candidates = useData<Row[]>(`/callouts/${id}/assignment-candidates?position=${position}`, []);
+  useEffect(() => { setUserId(''); setVerified(false); setSuccess(''); }, [id, position, requirements]);
+  const options = ['SOCORRISTA', 'GRADUADO', 'RADIOPERADOR', 'PILOTO'];
+  return <details className="section-block"><summary>Inscribir directamente · jefatura</summary><p>Completa la convocatoria con personas elegibles, sin esperar su autoinscripción. No se omiten nivel, graduación, habilitaciones, cupo, plazo ni cruces de horario. La persona recibirá una notificación y verá el servicio en su programación.</p>
+    <p className="multiline"><b>Requisitos que debes verificar:</b>{'\n'}{requirements}</p>
+    <form className="card flow-form" onSubmit={async e => {
+      e.preventDefault(); setBusy(true); setError(''); setSuccess('');
+      try {
+        await api(`/callouts/${id}/assignments`, 'POST', { userId, position, requirementsVerified: verified });
+        setUserId(''); setVerified(false); setSuccess('Inscripción directa confirmada. Se notificó a la persona.'); changed();
+      } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    }}>
+      <label className="field">Puesto<select name="assignmentPosition" value={position} onChange={e => setPosition(e.target.value)}>{options.map(p => <option key={p} value={p}>{positionNames[p]}</option>)}</select></label>
+      <label className="field">Persona elegible<select name="assignmentUser" required value={userId} onChange={e => { setUserId(e.target.value); setVerified(false); }} disabled={candidates.loading || busy}><option value="">Selecciona una persona</option>{candidates.data.map(u => <option key={u.id} value={u.id}>{u.name} {u.surnames} · {u.graduated ? 'Graduado' : 'En formación'} · {u.training_level}</option>)}</select></label>
+      {!candidates.loading && !candidates.data.length && <p>No hay personas elegibles para este puesto con los cupos y horarios actuales.</p>}
+      <label className="requirement"><input name="assignmentVerified" type="checkbox" required checked={verified} onChange={e => setVerified(e.target.checked)}/>He verificado todos los requisitos declarados para esta persona.</label>
+      <ErrorNotice message={error || candidates.error}/>{success && <p role="status">{success}</p>}
+      <button className="button" disabled={busy || candidates.loading || !userId || !verified}>{busy ? 'Inscribiendo…' : 'Confirmar inscripción directa'}</button>
+    </form>
+  </details>;
 }
 function TeamPage({ id, user, callout: c }: { id: string; user: Session; callout: Row }) {
-  const applicants = useData<Row[]>(`/callouts/${id}/enrollments`, []); const [filter, setFilter] = useState('TODOS');
-  return <><h2>Inscripciones y equipo a cargo</h2><ErrorNotice message={applicants.error}/><div className="filters">{['TODOS', 'CONFIRMADA', 'PENDIENTE_REEMPLAZO', 'RECHAZADA', 'CANCELADA'].map(f => <button key={f} className={`filter ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f === 'CONFIRMADA' ? 'ACEPTADA' : f.replaceAll('_', ' ')}</button>)}</div>
-    {applicants.data.filter(e => filter === 'TODOS' || e.status === filter).map(e => <details className="card" key={e.id}><summary>{e.name} {e.surnames} · {positionNames[e.position]} · {e.status === 'CONFIRMADA' ? 'ACEPTADA' : e.status}</summary><p>Formación: {e.training_level} · Inscripción: {date(e.created_at)}</p><p>Código: {e.id}</p>{e.cancellation_requested_at && <p>Solicitó reemplazo: {e.cancellation_reason}</p>}{e.replacement_for && <p>Reemplaza inscripción: {e.replacement_for}</p>}
-      {new Date(c.start_at).getTime() > Date.now() && ((e.status === 'PENDIENTE_REEMPLAZO' && c.can_operate) || (e.status === 'CONFIRMADA' && user.role === 'JEFATURA')) && <DataForm fields={[{ name: 'decision', label: 'Decisión', options: e.status === 'CONFIRMADA' ? ['RECHAZAR'] : ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo' }]} submit={v => api(`/enrollments/${e.id}/review`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}
-    </details>)}
-    {c.can_operate && <><OperationPanel id={id} user={user} kind={c.kind}/><MaterialsPanel id={id}/></>}
-  </>;
+  const applicants = useData<Row[]>(`/callouts/${id}/enrollments`, []);
+  return <><details className="section-block"><summary>Equipo e inscripciones</summary><ErrorNotice message={applicants.error}/>
+    {Object.keys(positionNames).map(position => {
+      const rows = applicants.data.filter(e => e.position === position); if (!rows.length) return null;
+      return <section className="team-group" key={position}><h3>{positionNames[position]}</h3>{rows.map(e => <details className="card" key={e.id}>
+        <summary>{e.name} {e.surnames} · {e.status === 'CONFIRMADA' ? 'ACEPTADA' : e.status}</summary><p>Formación: {e.training_level} · Inscripción: {date(e.created_at)}</p>{e.assigned_by && <p>Asignación directa de jefatura: {date(e.assigned_at)} · Requisitos verificados.</p>}<p>Código: {e.id}</p>{e.cancellation_requested_at && <p>Solicitó reemplazo: {e.cancellation_reason}</p>}
+        {new Date(c.start_at).getTime() > Date.now() && ((e.status === 'PENDIENTE_REEMPLAZO' && c.can_operate) || (e.status === 'CONFIRMADA' && user.role === 'JEFATURA')) && <DataForm fields={[{ name: 'decision', label: 'Decisión', options: e.status === 'CONFIRMADA' ? ['RECHAZAR'] : ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo' }]} submit={v => api(`/enrollments/${e.id}/review`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}
+      </details>)}</section>;
+    })}
+    {!applicants.data.length && <p>Aún no hay participantes.</p>}
+    </details>{c.can_operate && <><OperationPanel id={id} user={user} kind={c.kind}/><MaterialsPanel id={id}/></>}</>;
 }
 function OperationPanel({ id, user, kind }: { id: string; user: Session; kind: string }) {
   const attendance = useData<Row[]>(`/callouts/${id}/attendance`, []);
   if (kind !== 'SERVICIO') return null;
-  return <><h2>Apertura y cierre</h2><p>El encargado abre y cierra el servicio. Antes de abrir debe estar completo y tener foto del equipo.</p><PhotoForm id={id}/><DataForm fields={[{ name: 'action', label: 'Acción', options: ['ABRIR', 'CERRAR'] }, { name: 'observations', label: 'Observaciones e indicaciones', type: 'textarea' }]} submit={v => api(`/callouts/${id}/operation`, 'POST', v)}/>
-    <h2>Revisión de asistencia</h2><p>Tolerancia: 10 minutos. Si supera los 10, se descuenta el doble del retraso hasta que jefatura apruebe su justificación.</p><ErrorNotice message={attendance.error}/>{attendance.data.map(a => <details className="card" key={a.id}><summary>{a.name} · {a.status} · {a.approved_hours ?? '—'} h</summary><p>Entrada: {date(a.check_in)} · Salida: {date(a.check_out)}</p><p>Retraso: {delay(a.late_minutes)} · Deducción: {a.deduction} h</p><p>{a.observations}</p><DataForm key={`${a.id}-${a.check_in}-${a.check_out}`} initial={{ checkIn: localInput(a.check_in), checkOut: localInput(a.check_out), observations: a.observations }} fields={[
+  return <><details className="section-block"><summary>Apertura y cierre del servicio</summary><p>Puede abrirse con las vacantes completas, aunque no tenga responsable ni foto.</p><DataForm fields={[{ name: 'action', label: 'Acción', options: ['ABRIR', 'CERRAR'] }, { name: 'observations', label: 'Observaciones e indicaciones', type: 'textarea' }]} submit={v => api(`/callouts/${id}/operation`, 'POST', v)}/></details>
+    <details className="section-block"><summary>Revisión de asistencia</summary><p>Después de 7 días sin revisión, se usan las marcas del participante. Sin entrada y salida no se acreditan horas automáticamente.</p><ErrorNotice message={attendance.error}/>{attendance.data.map(a => <details className="card" key={a.id}><summary>{a.name} · {a.status} · {a.approved_hours ?? '—'} h</summary><p>Entrada: {date(a.check_in)} · Salida: {date(a.check_out)}</p><p>Retraso: {delay(a.late_minutes)} · Deducción: {a.deduction} h</p><p>{a.observations}</p>{a.month_closed ? <p>Mes aprobado: la asistencia ya no se puede modificar.</p> : <DataForm key={`${a.id}-${a.check_in}-${a.check_out}`} initial={{ checkIn: localInput(a.check_in), checkOut: localInput(a.check_out), observations: a.observations }} fields={[
       { name: 'checkIn', label: 'Entrada (hora de Perú)', type: 'datetime-local' }, { name: 'checkOut', label: 'Salida (hora de Perú)', type: 'datetime-local' },
-      ...(user.role === 'JEFATURA' ? [{ name: 'hours', label: 'Horas excepcionales autorizadas (vacío = horario y tolerancia)', type: 'number', min: 0, max: 48, step: '0.01', optional: true }] : []),
+      ...(user.role === 'JEFATURA' ? [{ name: 'hours', label: 'Horas excepcionales autorizadas (vacío = cálculo normal)', type: 'number', min: 0, max: 48, step: '0.01', optional: true }] : []),
       { name: 'observations', label: 'Motivo / observaciones', type: 'textarea' },
-    ]} label="Confirmar o corregir" submit={v => api(`/attendance/${a.id}/confirm`, 'POST', v)}/></details>)}</>;
+    ]} label="Confirmar o corregir" submit={v => api(`/attendance/${a.id}/confirm`, 'POST', v)}/>}</details>)}</details></>;
 }
 function MaterialsPanel({ id }: { id: string }) {
   const materials = useData<Row[]>(`/callouts/${id}/materials`, []); const catalog = useData<Row[]>('/material-catalog', []);
-  return <><h2>Solicitud de materiales al almacén</h2><p>Catálogo orientativo, sin control de stock. No bloquea el servicio. Registra quién recibe y devuelve cada artículo.</p><ErrorNotice message={materials.error || catalog.error}/><DataForm fields={[
-    { name: 'materialId', label: 'Catálogo', optional: true, options: [{ value: '', label: 'Otro material / especificar' }, ...catalog.data.map(m => ({ value: m.id, label: m.name }))] },
-    { name: 'name', label: 'Material o referencia', max: 160 }, { name: 'quantity', label: 'Cantidad solicitada', type: 'number', min: 1, max: 10000 }, { name: 'details', label: 'Especificaciones / indicaciones', type: 'textarea' },
-  ]} submit={v => api(`/callouts/${id}/materials`, 'POST', { ...v, materialId: v.materialId || null })}/>
-    {materials.data.map(m => <details className="card" key={m.id}><summary>{m.quantity} × {m.name}</summary><p>{m.details}</p><p>Recibido: {m.received_quantity} · {m.received_name || 'Pendiente'} · {date(m.received_at)}</p><p>Devuelto: {m.returned_quantity} · {m.returned_name || 'Pendiente'} · {date(m.returned_at)}</p><p>{m.condition_note}</p>{!m.returned_at && <DataForm fields={[
-      { name: 'action', label: 'Movimiento', options: m.received_at ? ['DEVOLUCION'] : ['RECEPCION'] }, { name: 'quantity', label: m.received_at ? 'Cantidad devuelta en buen estado' : 'Cantidad recibida', type: 'number', min: m.received_at ? 0 : 1, max: m.received_at ? m.received_quantity : m.quantity },
-      { name: 'observations', label: 'Observaciones (indica pérdidas o daños)', type: 'textarea' },
-    ]} submit={v => api(`/materials/${m.id}/handover`, 'POST', v)}/>}</details>)}<button className="button secondary" onClick={() => window.print()}>Imprimir solicitud</button>
-  </>;
+  return <details className="section-block"><summary>Solicitud de materiales al almacén</summary><p>No administra stock ni bloquea el servicio. Registra la entrega y devolución.</p><ErrorNotice message={materials.error || catalog.error}/>
+    <details><summary>Añadir material</summary><DataForm fields={[
+      { name: 'materialId', label: 'Catálogo orientativo', optional: true, options: [{ value: '', label: 'Otro material' }, ...catalog.data.map(m => ({ value: m.id, label: m.name }))] },
+      { name: 'name', label: 'Material o referencia', max: 160 }, { name: 'quantity', label: 'Cantidad solicitada', type: 'number', min: 1, max: 10000 }, { name: 'details', label: 'Especificaciones', type: 'textarea' },
+    ]} submit={v => api(`/callouts/${id}/materials`, 'POST', { ...v, materialId: v.materialId || null })}/></details>
+    <div className="document-preview"><div className="page-heading"><div><p className="eyebrow">Vista previa digital</p><h3>Solicitud al almacén</h3></div><PdfDownload path={`/callouts/${id}/materials/pdf`} filename="solicitud-materiales.pdf"/></div>
+      {!materials.data.length && <p>Sin materiales solicitados.</p>}{materials.data.map(m => <div className="preview-row" key={m.id}><b>{m.quantity} × {m.name}</b><p>{m.details}</p><small>Recibido: {m.received_quantity} · Devuelto: {m.returned_quantity}</small><p>{m.condition_note}</p></div>)}
+    </div>{materials.data.map(m => <details className="card" key={m.id}><summary>Entrega / devolución · {m.name}</summary><p>Recibido: {m.received_quantity} · {m.received_name || 'Pendiente'} · {date(m.received_at)}</p><p>Devuelto: {m.returned_quantity} · {m.returned_name || 'Pendiente'} · {date(m.returned_at)}</p>{!m.returned_at && <DataForm fields={[
+      { name: 'action', label: 'Movimiento', options: m.received_at ? ['DEVOLUCION'] : ['RECEPCION'] }, { name: 'quantity', label: 'Cantidad', type: 'number', min: m.received_at ? 0 : 1, max: m.received_at ? m.received_quantity : m.quantity }, { name: 'observations', label: 'Observaciones (pérdidas o daños)', type: 'textarea' },
+    ]} submit={v => api(`/materials/${m.id}/handover`, 'POST', v)}/>}</details>)}
+  </details>;
 }
 function PhotoForm({ id }: { id: string }) {
   const [file, setFile] = useState<File>(); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
-  return <form className="panel" onSubmit={async e => { e.preventDefault(); if (!file) return; setBusy(true); const data = new FormData(); data.append('file', file); try { await api(`/callouts/${id}/photo`, 'POST', data); changed(); setMessage('Foto guardada.'); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }}><label className="field">Foto del equipo (JPG/PNG, máximo 2 MB)<input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/></label><button className="button secondary" disabled={busy}>Guardar foto</button><a className="link" href={`/api/v1/callouts/${id}/photo`} target="_blank" rel="noreferrer"> Ver foto</a><p role="status">{message}</p></form>;
+  return <form className="soft-panel" onSubmit={async e => { e.preventDefault(); if (!file) return; setBusy(true); setMessage(''); try { if (file.size > 50 * 1024 * 1024) throw new Error('Máximo 50 MB.'); const data = new FormData(); data.append('file', file); await api(`/callouts/${id}/photo`, 'POST', data); changed(); setMessage('Foto guardada.'); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }}><label className="field">Foto JPG/PNG · hasta 50 MB y 40 megapíxeles<input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/></label><button className="button secondary" disabled={busy}>Guardar foto</button><p role="status">{message}</p></form>;
 }

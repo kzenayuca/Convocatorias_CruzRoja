@@ -174,8 +174,76 @@ UPDATE callouts SET created_by=responsible_id, service_code='LEG-'||id::text,
     socorrista_slots=capacity, deadline=COALESCE(deadline,start_at),
     responsible_id=CASE WHEN start_at>CURRENT_TIMESTAMP AND opened_at IS NULL THEN NULL ELSE responsible_id END,
     status=CASE WHEN status IN ('PUBLICADA','CONFIRMADA') AND start_at>CURRENT_TIMESTAMP THEN 'ABIERTA' ELSE status END
-WHERE service_code IS NULL;
+WHERE service_code IS NULL AND created_by IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS callout_service_code_normalized ON callouts(lower(service_code));
 CREATE INDEX IF NOT EXISTS enrollment_position ON enrollments(callout_id,position,status);
 CREATE UNIQUE INDEX IF NOT EXISTS one_responsible_per_callout ON enrollments(callout_id)
 WHERE position='RESPONSABLE' AND status='CONFIRMADA';
+
+-- Versión 2.3: migraciones aditivas y ejecutadas una sola vez cuando corresponde.
+ALTER TABLE callouts DROP CONSTRAINT IF EXISTS callouts_socorrista_slots_check;
+ALTER TABLE callouts ADD CONSTRAINT callouts_socorrista_slots_check CHECK (socorrista_slots >= 0);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS graduate_slots INT NOT NULL DEFAULT 0 CHECK (graduate_slots >= 0);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS trainee_slots INT NOT NULL DEFAULT 0 CHECK (trainee_slots >= 0);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS photo_uploaded_at TIMESTAMP;
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS photo_uploaded_by UUID REFERENCES users(id);
+CREATE TABLE IF NOT EXISTS callout_photo_archive (
+    id UUID PRIMARY KEY, callout_id UUID NOT NULL REFERENCES callouts(id),
+    photo BYTEA NOT NULL, photo_type VARCHAR(30) NOT NULL,
+    uploaded_by UUID REFERENCES users(id), uploaded_at TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS service_code_history (
+    id UUID PRIMARY KEY, callout_id UUID NOT NULL REFERENCES callouts(id),
+    service_code VARCHAR(40) NOT NULL, service_type VARCHAR(100) NOT NULL,
+    assigned_by UUID REFERENCES users(id), assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS code_history_type ON service_code_history(service_type,assigned_at DESC);
+CREATE TABLE IF NOT EXISTS institution_settings (
+    id INT PRIMARY KEY CHECK(id=1), graduation_hours NUMERIC(10,2) CHECK(graduation_hours>0),
+    updated_by UUID REFERENCES users(id), updated_at TIMESTAMP
+);
+INSERT INTO institution_settings(id) VALUES(1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS monthly_reports (
+    month DATE PRIMARY KEY, status VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+    approved_by UUID REFERENCES users(id), approved_at TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS monthly_report_rows (
+    month DATE NOT NULL REFERENCES monthly_reports(month), user_id UUID NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL, earned NUMERIC(12,4) NOT NULL, deductions NUMERIC(12,4) NOT NULL,
+    hours NUMERIC(12,4) NOT NULL, pending INT NOT NULL, PRIMARY KEY(month,user_id)
+);
+INSERT INTO service_code_history(id,callout_id,service_code,service_type)
+SELECT id,id,service_code,service_type FROM callouts c WHERE service_code IS NOT NULL
+AND NOT EXISTS(SELECT 1 FROM service_code_history h WHERE lower(h.service_code)=lower(c.service_code))
+ON CONFLICT DO NOTHING;
+CREATE UNIQUE INDEX IF NOT EXISTS code_history_reserved ON service_code_history(lower(service_code));
+
+-- Total inclusivo. Solo se calcula una vez; no altera inscripciones ni responsables existentes.
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS total_volunteers INT CHECK(total_volunteers>0);
+UPDATE callouts c SET total_volunteers=GREATEST(1,
+    c.socorrista_slots+c.graduate_slots+c.trainee_slots+c.radio_slots+c.pilot_slots+
+    (SELECT count(*)::int FROM enrollments e WHERE e.callout_id=c.id AND e.position='RESPONSABLE' AND e.status='CONFIRMADA'),
+    (SELECT count(*)::int FROM enrollments e WHERE e.callout_id=c.id AND e.status='CONFIRMADA'))
+WHERE total_volunteers IS NULL;
+
+-- Metas generales de saldo acumulado según condición; la meta antigua se conserva para formación.
+CREATE TABLE IF NOT EXISTS volunteer_hour_targets (
+    condition VARCHAR(20) PRIMARY KEY CHECK(condition IN ('FORMACION','GRADUADO')),
+    hours NUMERIC(10,2) CHECK(hours>0), updated_by UUID REFERENCES users(id), updated_at TIMESTAMP
+);
+INSERT INTO volunteer_hour_targets(condition,hours,updated_by,updated_at)
+SELECT 'FORMACION',graduation_hours,updated_by,updated_at FROM institution_settings WHERE id=1
+ON CONFLICT DO NOTHING;
+INSERT INTO volunteer_hour_targets(condition) VALUES('GRADUADO') ON CONFLICT DO NOTHING;
+
+-- El antiguo rol no otorga permisos globales. Se conserva la procedencia sin tocar asignaciones.
+CREATE TABLE IF NOT EXISTS legacy_account_roles (
+    user_id UUID PRIMARY KEY REFERENCES users(id), previous_role VARCHAR(30) NOT NULL,
+    migrated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO legacy_account_roles(user_id,previous_role)
+SELECT id,role FROM users WHERE role='RECLUTADOR' ON CONFLICT DO NOTHING;
+UPDATE users SET role='VOLUNTARIO' WHERE role='RECLUTADOR';
+ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS assigned_by UUID REFERENCES users(id);
+ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
+ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS requirements_accepted BOOLEAN NOT NULL DEFAULT FALSE;

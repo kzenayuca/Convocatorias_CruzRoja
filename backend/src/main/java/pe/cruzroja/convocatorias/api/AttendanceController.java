@@ -16,8 +16,11 @@ public class AttendanceController {
     private final JdbcTemplate db;
     private final CalloutWorkflow services;
     private final ServiceMaintenance maintenance;
-    public AttendanceController(JdbcTemplate db, CalloutWorkflow services, ServiceMaintenance maintenance) {
-        this.db=db; this.services=services; this.maintenance=maintenance;
+    private final MonthlyLedger ledger;
+    private final pe.cruzroja.convocatorias.application.GraduationService graduation;
+    public AttendanceController(JdbcTemplate db, CalloutWorkflow services, ServiceMaintenance maintenance,MonthlyLedger ledger,JdbcGraduationSettings settings) {
+        this.db=db; this.services=services; this.maintenance=maintenance; this.ledger=ledger;
+        this.graduation=new pe.cruzroja.convocatorias.application.GraduationService(settings);
     }
     public record Mark(@NotBlank String action) { }
     public record Confirmation(@NotNull LocalDateTime checkIn, @NotNull LocalDateTime checkOut,
@@ -38,6 +41,7 @@ public class AttendanceController {
             LEFT JOIN justifications j ON j.absence_id=a.id
             """+where+" ORDER BY c.start_at DESC",args).stream().map(a -> {
                 a.put("late_minutes",ServiceRules.lateSeconds(time(a,"start_at"),time(a,"check_in"))/60.0);
+                a.put("month_closed",ledger.closed(YearMonth.from(time(a,"start_at"))));
                 a.put("deduction",rounded(deduction(a))); return a;
             }).toList();
     }
@@ -51,6 +55,7 @@ public class AttendanceController {
         var e=one(db,"SELECT * FROM enrollments WHERE id=?",id);
         require(actor().id().equals(e.get("volunteer_id")),"Solo puedes marcar tu asistencia.");
         var c=services.locked(id(e,"callout_id"));
+        ledger.ensureOpen(c);
         e=one(db,"SELECT * FROM enrollments WHERE id=?",id);
         valid(text(e,"status").equals("CONFIRMADA") && text(c,"kind").equals("SERVICIO"),"Necesitas una inscripción confirmada de servicio.");
         valid(c.get("opened_at")!=null && c.get("closed_at")==null && !text(c,"status").equals("CANCELADA"),"El encargado debe abrir el servicio y aún no cerrarlo.");
@@ -72,6 +77,7 @@ public class AttendanceController {
     public void confirm(@PathVariable UUID id,@Valid @RequestBody Confirmation r) {
         var initial=one(db,"SELECT * FROM attendance_records WHERE id=?",id);
         var c=services.locked(id(initial,"callout_id")); services.operationPermission(c);
+        ledger.ensureOpen(c);
         valid(!text(c,"status").equals("CANCELADA") && !time(c,"end_at").isAfter(now()),"Confirma las horas después del horario del servicio, no si fue cancelado.");
         valid(r.checkOut().isAfter(r.checkIn()) && !r.checkOut().isAfter(now()),"Las marcas deben ser válidas y no futuras.");
         valid(r.hours()==null || chief(),"Solo jefatura puede ajustar horas fuera del cálculo automático.");
@@ -86,6 +92,7 @@ public class AttendanceController {
     public void correction(@PathVariable UUID id,@Valid @RequestBody Reason r) {
         var e=one(db,"SELECT * FROM enrollments WHERE id=?",id); require(actor().id().equals(e.get("volunteer_id")),"Solo puedes solicitar revisión propia.");
         var c=services.locked(id(e,"callout_id"));
+        ledger.ensureOpen(c);
         valid(text(e,"status").equals("CONFIRMADA") && text(c,"kind").equals("SERVICIO"),"No corresponde revisión de asistencia.");
         valid(!time(c,"start_at").isAfter(now()),"El servicio aún no comenzó.");
         db.update("INSERT INTO attendance_records(id,enrollment_id,volunteer_id,callout_id,responsible_id,status,observations) VALUES (?,?,?,?,?,'PENDIENTE_REVISION',?) ON CONFLICT(enrollment_id) DO UPDATE SET observations=EXCLUDED.observations",
@@ -97,6 +104,7 @@ public class AttendanceController {
     public void justify(@PathVariable UUID id,@Valid @RequestBody Reason r) {
         var initial=one(db,"SELECT * FROM attendance_records WHERE id=?",id);
         var c=services.locked(id(initial,"callout_id"));
+        ledger.ensureOpen(c);
         var a=one(db,"SELECT * FROM attendance_records WHERE id=? FOR UPDATE",id);
         require(actor().id().equals(a.get("volunteer_id")),"Solo puedes justificar tu asistencia.");
         valid(!time(c,"end_at").isAfter(now()),"Presenta la justificación después del servicio.");
@@ -115,6 +123,7 @@ public class AttendanceController {
         require(chief(),"Solo jefatura resuelve justificaciones.");
         var j=one(db,"SELECT j.*,a.enrollment_id,a.callout_id FROM justifications j JOIN attendance_records a ON a.id=j.absence_id WHERE j.id=?",id);
         var c=services.locked(id(j,"callout_id"));
+        ledger.ensureOpen(c);
         one(db,"SELECT id FROM justifications WHERE id=? FOR UPDATE",id);
         if(r.approved() && text(j,"kind").equals("AUSENCIA")) valid(db.queryForObject("SELECT count(*) FROM enrollments WHERE replacement_for=? AND status='CONFIRMADA' AND reviewed_at<=?",Integer.class,j.get("enrollment_id"),time(c,"start_at"))>0,"Una inasistencia requiere reemplazo aceptado antes del inicio. La tardanza no requiere reemplazo.");
         db.update("UPDATE justifications SET status=?,resolution_comment=? WHERE id=?",r.approved()?"APROBADA":"RECHAZADA",r.comment(),id);
@@ -125,24 +134,75 @@ public class AttendanceController {
         maintenance.refresh(); return summary(actor().id(),month==null?YearMonth.from(now()):YearMonth.parse(month));
     }
     Map<String,Object> summary(UUID user, YearMonth month) {
+        if(ledger.closed(month)) {
+            var rows=db.queryForList("SELECT earned,deductions,hours,pending FROM monthly_report_rows WHERE month=? AND user_id=?",month.atDay(1),user);
+            var result=new LinkedHashMap<String,Object>();
+            result.putAll(rows.isEmpty()?Map.of("earned",0,"deductions",0,"hours",0,"pending",0):rows.get(0));
+            result.put("month",month.toString()); result.put("closed",true); return result;
+        }
         var sql="SELECT a.*,c.start_at,c.end_at,c.status AS callout_status,j.status AS justification_status,j.kind AS justification_kind FROM attendance_records a JOIN callouts c ON c.id=a.callout_id LEFT JOIN justifications j ON j.absence_id=a.id WHERE a.volunteer_id=? AND c.start_at>=? AND c.start_at<? AND c.status<>'CANCELADA'";
         var args=new ArrayList<Object>(List.of(user,month.atDay(1).atStartOfDay(),month.plusMonths(1).atDay(1).atStartOfDay()));
-        if(!chief() && !user.equals(actor().id())) { sql+=" AND (c.responsible_id=? OR c.created_by=?)"; args.add(actor().id()); args.add(actor().id()); }
+        if(!chief() && !user.equals(actor().id())) { sql+=" AND c.responsible_id=?"; args.add(actor().id()); }
         var rows=db.queryForList(sql,args.toArray());
         double earned=0,deductions=0; int pending=0;
         for(var a:rows) {
             if(text(a,"status").equals("CONFIRMADA") && a.get("approved_hours")!=null) earned+=((Number)a.get("approved_hours")).doubleValue();
             deductions+=deduction(a);
-            if(!text(a,"status").equals("CONFIRMADA")) pending++;
+            if(Set.of("PENDIENTE_REVISION","INCOMPLETA").contains(text(a,"status"))) pending++;
         }
         return Map.of("month",month.toString(),"earned",rounded(earned),"deductions",rounded(deductions),"hours",rounded(earned-deductions),"pending",pending);
     }
     @GetMapping("/reports") public List<Map<String,Object>> report(@RequestParam String month) {
-        require(manager() || actor().graduated(),"No puedes consultar reportes del equipo."); maintenance.refresh();
+        require(chief(),"Solo jefatura consulta el reporte general."); maintenance.refresh();
         var parsed=YearMonth.parse(month);
-        var users=chief()?db.queryForList("SELECT id,name FROM users ORDER BY name"):
-                db.queryForList("SELECT DISTINCT u.id,u.name FROM users u JOIN enrollments e ON e.volunteer_id=u.id JOIN callouts c ON c.id=e.callout_id WHERE (c.responsible_id=? OR c.created_by=?) AND e.status IN ('CONFIRMADA','REEMPLAZADA') ORDER BY u.name",actor().id(),actor().id());
+        if(ledger.closed(parsed)) return db.queryForList("SELECT user_id AS id,name,earned,deductions,hours,pending FROM monthly_report_rows WHERE month=? ORDER BY name",parsed.atDay(1));
+        var users=db.queryForList("SELECT id,name || ' ' || surnames AS name FROM users ORDER BY name");
         return users.stream().map(u -> { var row=new LinkedHashMap<String,Object>(u); row.putAll(summary(id(u,"id"),parsed)); return (Map<String,Object>)row; }).toList();
+    }
+    @GetMapping("/attendance/progress") public Object progress() {
+        maintenance.refresh(); double earned=0,deductions=0; int pending=0;
+        var months=db.queryForList("""
+            SELECT DISTINCT date_trunc('month',c.start_at)::date AS month FROM attendance_records a JOIN callouts c ON c.id=a.callout_id WHERE a.volunteer_id=?
+            UNION SELECT month FROM monthly_report_rows WHERE user_id=? ORDER BY month
+            """,actor().id(),actor().id());
+        var details=new ArrayList<Map<String,Object>>();
+        for(var m:months) {
+            var row=summary(actor().id(),YearMonth.from(((java.sql.Date)m.get("month")).toLocalDate())); details.add(row);
+            earned+=((Number)row.get("earned")).doubleValue(); deductions+=((Number)row.get("deductions")).doubleValue(); pending+=((Number)row.get("pending")).intValue();
+        }
+        return Map.of("progress",graduation.progress(rounded(earned),rounded(deductions),pending,actor().graduated()),
+            "condition",actor().graduated()?"GRADUADO":"FORMACION","target_period","ACUMULADO","months",details);
+    }
+
+    @GetMapping("/reports/status") public Map<String,Object> reportStatus(@RequestParam String month) {
+        require(chief(),"Solo jefatura gestiona cierres mensuales."); maintenance.refresh(); var parsed=YearMonth.parse(month);
+        var rows=db.queryForList("SELECT status,approved_at FROM monthly_reports WHERE month=?",parsed.atDay(1));
+        var row=new LinkedHashMap<String,Object>(); row.put("status",rows.isEmpty()?"EN_CURSO":rows.get(0).get("status"));
+        row.put("approved_at",rows.isEmpty()?null:rows.get(0).get("approved_at"));
+        row.put("due",parsed.plusMonths(1).atDay(3).toString()); row.put("overdue",now().toLocalDate().isAfter(parsed.plusMonths(1).atDay(3)) && !ledger.closed(parsed));
+        return row;
+    }
+    @PostMapping("/reports/approve") @Transactional
+    public void approve(@RequestParam String month) {
+        require(chief(),"Solo jefatura aprueba el reporte mensual."); var parsed=YearMonth.parse(month);
+        valid(parsed.isBefore(YearMonth.from(now())),"El mes todavía no terminó.");
+        maintenance.refresh();
+        db.queryForList("SELECT id FROM callouts WHERE start_at>=? AND start_at<? ORDER BY id FOR UPDATE",parsed.atDay(1).atStartOfDay(),parsed.plusMonths(1).atDay(1).atStartOfDay());
+        valid(db.queryForObject("SELECT count(*) FROM callouts WHERE start_at>=? AND start_at<? AND end_at>? AND status<>'CANCELADA'",Integer.class,parsed.atDay(1).atStartOfDay(),parsed.plusMonths(1).atDay(1).atStartOfDay(),now())==0,"Hay servicios del mes que todavía no terminaron. Espera a su finalización para aprobar.");
+        db.update("INSERT INTO monthly_reports(month) VALUES(?) ON CONFLICT DO NOTHING",parsed.atDay(1));
+        one(db,"SELECT month FROM monthly_reports WHERE month=? FOR UPDATE",parsed.atDay(1));
+        valid(!ledger.closed(parsed),"El reporte ya está aprobado y no se puede volver a cerrar.");
+        for(var u:db.queryForList("SELECT id,name,surnames FROM users ORDER BY id")) {
+            var s=summary(id(u,"id"),parsed);
+            db.update("INSERT INTO monthly_report_rows(month,user_id,name,earned,deductions,hours,pending) VALUES (?,?,?,?,?,?,?)",parsed.atDay(1),u.get("id"),u.get("name")+" "+u.get("surnames"),s.get("earned"),s.get("deductions"),s.get("hours"),s.get("pending"));
+            Store.notify(db,id(u,"id"),"REPORTE","Reporte de "+parsed+" aprobado y publicado. Saldo: "+s.get("hours")+" h.","/services");
+        }
+        db.update("UPDATE monthly_reports SET status='APROBADO',approved_by=?,approved_at=? WHERE month=?",actor().id(),now(),parsed.atDay(1));
+    }
+    @GetMapping("/reports/pdf") public org.springframework.http.ResponseEntity<byte[]> reportPdf(@RequestParam String month) throws java.io.IOException {
+        var lines=new ArrayList<String>();
+        for(var r:report(month)) lines.add(r.get("name")+" | Reconocidas: "+r.get("earned")+" h | Deducciones: "+r.get("deductions")+" h | Saldo: "+r.get("hours")+" h | Pendientes: "+r.get("pending"));
+        return PdfDocument.download("reporte-"+YearMonth.parse(month)+".pdf","Reporte mensual - "+month,lines);
     }
     private static double rounded(double value) { return Math.round(value*10000.0)/10000.0; }
     private double deduction(Map<String,Object> a) {

@@ -4,6 +4,18 @@ import { api, changed, Row } from './api';
 export function ErrorNotice({ message }: { message?: string }) {
   return message ? <p className="form-error" role="alert">{message}</p> : null;
 }
+export function PdfDownload({ path, filename }: { path: string; filename: string }) {
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  return <span><button className="button secondary" disabled={busy} onClick={async () => {
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(`/api/v1${path}`);
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.mensaje || 'No se pudo descargar el PDF.'); }
+      const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a');
+      link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }}>{busy ? 'Preparando PDF…' : 'Descargar PDF ↓'}</button><ErrorNotice message={error}/></span>;
+}
 export function Action({ path, body = {}, children, method = 'POST' }: { path: string; body?: unknown; children: React.ReactNode; method?: string }) {
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   return <span><button className="button secondary" disabled={busy} onClick={async () => {

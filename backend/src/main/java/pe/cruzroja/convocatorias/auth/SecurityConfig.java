@@ -23,7 +23,7 @@ public class SecurityConfig {
                 .addFilterBefore(new CurrentAccountFilter(users), org.springframework.security.web.access.intercept.AuthorizationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/csrf").permitAll()
-                        .requestMatchers("/api/v1/inventory/**").hasAnyRole("RECLUTADOR", "JEFATURA")
+                        .requestMatchers("/api/v1/inventory/**").hasRole("JEFATURA")
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
                     response.setStatus(401);

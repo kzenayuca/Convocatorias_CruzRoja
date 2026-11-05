@@ -1,9 +1,9 @@
 {
   "name": "convocatorias-frontend",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.4.0",
   "type": "module",
-  "scripts": { "dev": "vite --host 0.0.0.0" },
+  "scripts": { "dev": "vite --host 0.0.0.0", "check": "tsc --noEmit", "build": "tsc --noEmit && vite build" },
   "dependencies": {
     "react": "19.2.0",
     "react-dom": "19.2.0",

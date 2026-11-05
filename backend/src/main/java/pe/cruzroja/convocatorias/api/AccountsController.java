@@ -83,7 +83,7 @@ public class AccountsController {
     @PutMapping("/users/{id}") @Transactional
     public void review(@PathVariable UUID id, @Valid @RequestBody Review r) {
         require(chief(), "Solo jefatura administra cuentas.");
-        valid(Set.of("VOLUNTARIO", "RECLUTADOR", "JEFATURA").contains(r.role()), "Rol no válido.");
+        valid(Set.of("VOLUNTARIO", "JEFATURA").contains(r.role()), "Rol no válido. Responsable es una función por servicio, no un rol de cuenta.");
         valid(Set.of("BASICO", "INTERMEDIO", "AVANZADO").contains(r.level()), "Nivel no válido.");
         valid(Set.of("ACTIVO", "PENDIENTE", "RECHAZADO", "INACTIVO", "SUSPENDIDO").contains(r.status()), "Estado no válido.");
         // Mismo orden de bloqueo que la aprobación de inscripciones: servicio antes del perfil.

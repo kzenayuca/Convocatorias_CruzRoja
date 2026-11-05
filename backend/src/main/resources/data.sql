@@ -3,13 +3,13 @@ INSERT INTO users (id, name, email, password_hash, role, graduated, status)
 SELECT id::uuid, name, email, '$2b$12$CcAB2QEU.0aMjHJ5IkC2leOiABAaCXB0OuAefOcchvTSPY6LTZpvG', role, graduated, status
 FROM (VALUES
     ('00000000-0000-0000-0000-000000000001', 'Ana Torres', 'voluntario@demo.pe', 'VOLUNTARIO', false, 'ACTIVO'),
-    ('00000000-0000-0000-0000-000000000002', 'Luis Quispe', 'reclutador@demo.pe', 'RECLUTADOR', true, 'ACTIVO'),
+    ('00000000-0000-0000-0000-000000000002', 'Luis Quispe', 'reclutador@demo.pe', 'VOLUNTARIO', true, 'ACTIVO'),
     ('00000000-0000-0000-0000-000000000003', 'Alejandro Ruiz', 'jefatura@demo.pe', 'JEFATURA', false, 'ACTIVO'),
     ('00000000-0000-0000-0000-000000000004', 'María Flores', 'maria@demo.pe', 'VOLUNTARIO', true, 'ACTIVO'),
     ('00000000-0000-0000-0000-000000000005', 'Diego Rojas', 'diego@demo.pe', 'VOLUNTARIO', false, 'ACTIVO'),
     ('00000000-0000-0000-0000-000000000006', 'Lucía Vega', 'lucia@demo.pe', 'VOLUNTARIO', false, 'ACTIVO'),
-    ('00000000-0000-0000-0000-000000000007', 'Carlos Medina', 'reclutador.formacion@demo.pe', 'RECLUTADOR', false, 'ACTIVO'),
-    ('00000000-0000-0000-0000-000000000008', 'Sofía Aguilar', 'reclutador2@demo.pe', 'RECLUTADOR', true, 'ACTIVO'),
+    ('00000000-0000-0000-0000-000000000007', 'Carlos Medina', 'reclutador.formacion@demo.pe', 'VOLUNTARIO', false, 'ACTIVO'),
+    ('00000000-0000-0000-0000-000000000008', 'Sofía Aguilar', 'reclutador2@demo.pe', 'VOLUNTARIO', true, 'ACTIVO'),
     ('00000000-0000-0000-0000-000000000009', 'Elena Pinto', 'jefatura2@demo.pe', 'JEFATURA', false, 'ACTIVO'),
     ('00000000-0000-0000-0000-000000000010', 'Pedro Salas', 'inactivo@demo.pe', 'VOLUNTARIO', false, 'INACTIVO')
 ) AS demo(id, name, email, role, graduated, status)
@@ -43,6 +43,7 @@ VALUES
 ('10000000-0000-0000-0000-000000000008', 'Servicio comunitario en Socabaya', 'Servicio finalizado de seis horas para consultar el historial.', CURRENT_DATE - INTERVAL '5 days' + INTERVAL '8 hours', CURRENT_DATE - INTERVAL '5 days' + INTERVAL '14 hours', 'Socabaya', 'Actividad finalizada.', 'BASICO', 10, 2, 'FINALIZADA')
 ON CONFLICT DO NOTHING;
 
+
 -- Inscripciones demo para que los cupos mostrados provengan de datos reales.
 INSERT INTO enrollments (id, volunteer_id, callout_id, status) VALUES
 ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'CONFIRMADA'),
@@ -68,7 +69,7 @@ INSERT INTO materials (id, name, category, total_stock, reserved_stock)
 VALUES ('20000000-0000-0000-0000-000000000001', 'Botiquín portátil', 'Primeros auxilios', 20, 6)
 ON CONFLICT DO NOTHING;
 
--- Los ejemplos quedan a cargo del reclutador demo; no se reasignan servicios ya configurados.
+-- Contacto histórico de los ejemplos; no se reasignan servicios ya configurados.
 UPDATE callouts SET responsible_id='00000000-0000-0000-0000-000000000002'
 WHERE id::text LIKE '10000000-0000-0000-0000-%' AND responsible_id IS NULL AND service_code IS NULL;
 
@@ -100,3 +101,17 @@ INSERT INTO materials(id,name,category,total_stock,reserved_stock) VALUES
 ('20000000-0000-0000-0000-000000000003','Carpa','Logística',0,0),
 ('20000000-0000-0000-0000-000000000004','Camilla','Primeros auxilios',0,0)
 ON CONFLICT DO NOTHING;
+
+-- Incluye códigos demo nuevos sin duplicar el historial ni cambiar los códigos guardados.
+INSERT INTO service_code_history(id,callout_id,service_code,service_type)
+SELECT md5(c.id::text || c.service_code)::uuid,c.id,c.service_code,c.service_type FROM callouts c
+WHERE c.service_code IS NOT NULL AND NOT EXISTS(
+    SELECT 1 FROM service_code_history h WHERE lower(h.service_code)=lower(c.service_code))
+ON CONFLICT DO NOTHING;
+
+-- Los ejemplos recién insertados también reciben su total inclusivo, sin recalcular los existentes.
+UPDATE callouts c SET total_volunteers=GREATEST(1,
+    c.socorrista_slots+c.graduate_slots+c.trainee_slots+c.radio_slots+c.pilot_slots+
+    (SELECT count(*)::int FROM enrollments e WHERE e.callout_id=c.id AND e.position='RESPONSABLE' AND e.status='CONFIRMADA'),
+    (SELECT count(*)::int FROM enrollments e WHERE e.callout_id=c.id AND e.status='CONFIRMADA'))
+WHERE total_volunteers IS NULL;

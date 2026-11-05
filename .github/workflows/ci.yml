@@ -43,6 +43,14 @@ jobs:
           cache: maven
       - name: JUnit y procesos con PostgreSQL aislado
         run: bash ./mvnw -B -ntp test
+      - name: Conservar ejecución y cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-y-cobertura
+          path: |
+            backend/target/surefire-reports/
+            backend/target/site/jacoco/
       - name: Validar Docker Compose sin iniciar servicios
         working-directory: .
         run: docker compose config --quiet
@@ -62,8 +70,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Instalar dependencias del lockfile
         run: npm ci --no-audit --no-fund
-      - name: Mostrar comandos disponibles
-        run: npm run
+      - name: Comprobar TypeScript y construir frontend
+        run: npm run build
 
   funcionales:
     runs-on: ubuntu-24.04

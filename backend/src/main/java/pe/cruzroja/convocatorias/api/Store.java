@@ -19,7 +19,7 @@ public final class Store {
         return (AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
     public static boolean chief() { return actor().role().equals("JEFATURA"); }
-    public static boolean manager() { return chief() || actor().role().equals("RECLUTADOR") && actor().graduated(); }
+    public static boolean manager() { return chief(); }
     public static void require(boolean condition, String message) {
         if (!condition) throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
     }

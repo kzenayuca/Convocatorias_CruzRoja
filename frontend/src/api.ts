@@ -24,13 +24,15 @@ export async function api<T = any>(path: string, method = 'GET', body?: unknown)
 
 export function useData<T>(path: string, initial: T) {
   const [data, setData] = useState<T>(initial);
+  const [source, setSource] = useState(path);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
   useEffect(() => {
     let active = true;
     setLoading(true);
-    api<T>(path).then(result => { if (active) { setData(result); setError(''); } })
+    setError('');
+    api<T>(path).then(result => { if (active) { setData(result); setSource(path); setError(''); } })
       .catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [path, version]);
@@ -40,7 +42,7 @@ export function useData<T>(path: string, initial: T) {
     const timer = window.setInterval(refresh, 60000);
     return () => { window.removeEventListener('data-changed', refresh); window.clearInterval(timer); };
   }, []);
-  return { data, error, loading };
+  return { data: source === path ? data : initial, error, loading };
 }
 
 export function changed() { window.dispatchEvent(new Event('data-changed')); }
@@ -51,4 +53,4 @@ export function localInput(value: string) {
   if (!value) return '';
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value)).replace(' ', 'T');
 }
-export const manager = (user: Session) => user.role === 'JEFATURA' || user.role === 'RECLUTADOR' && user.graduated;
+export const manager = (user: Session) => user.role === 'JEFATURA';

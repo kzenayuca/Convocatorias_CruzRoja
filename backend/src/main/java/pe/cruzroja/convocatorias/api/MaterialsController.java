@@ -52,4 +52,18 @@ public class MaterialsController {
             db.update("UPDATE callouts SET observations=observations || ? WHERE id=?","\nMaterial "+m.get("name")+": devuelto "+r.quantity()+" de "+m.get("received_quantity")+". "+r.observations(),c.get("id"));
         }
     }
+    @GetMapping("/callouts/{id}/materials/pdf")
+    public org.springframework.http.ResponseEntity<byte[]> pdf(@PathVariable UUID id) throws java.io.IOException {
+        var rows=list(id); var c=one(db,"SELECT title,service_code,location,start_at FROM callouts WHERE id=?",id);
+        var lines=new ArrayList<String>(); lines.add("Código: "+Objects.toString(c.get("service_code"),"Pendiente"));
+        lines.add("Lugar: "+c.get("location")+" | Inicio: "+c.get("start_at")); lines.add("");
+        for(var m:rows) {
+            lines.add(m.get("quantity")+" x "+m.get("name")); lines.add("Detalle: "+m.get("details"));
+            lines.add("Recibido: "+m.get("received_quantity")+" | Devuelto: "+m.get("returned_quantity"));
+            lines.add("Recibe: "+Objects.toString(m.get("received_name"),"Pendiente")+" | Devuelve: "+Objects.toString(m.get("returned_name"),"Pendiente"));
+            if(m.get("condition_note")!=null) lines.add("Observaciones: "+m.get("condition_note")); lines.add("");
+        }
+        if(rows.isEmpty()) lines.add("Sin materiales solicitados.");
+        return PdfDocument.download("materiales-"+id+".pdf","Solicitud de almacén - "+c.get("title"),lines);
+    }
 }

@@ -24,7 +24,7 @@ public class NoticesController {
     @PostMapping("/announcements") @Transactional
     public void publish(@Valid @RequestBody Announcement r) {
         require(chief(),"Solo jefatura publica comunicados.");
-        valid(Set.of("TODOS","VOLUNTARIO","RECLUTADOR","JEFATURA").contains(r.audience()),"Audiencia no válida.");
+        valid(Set.of("TODOS","VOLUNTARIO","JEFATURA").contains(r.audience()),"Audiencia no válida.");
         db.update("INSERT INTO announcements(id,title,body,audience,published_by) VALUES (?,?,?,?,?)",UUID.randomUUID(),r.title(),r.body(),r.audience(),actor().id());
         for(var user:db.queryForList("SELECT id FROM users WHERE status='ACTIVO' AND (?='TODOS' OR role=?)",r.audience(),r.audience()))
             Store.notify(db,id(user,"id"),"COMUNICADO",r.title()+": "+r.body(),"/notifications");
