@@ -18,7 +18,7 @@ class UseCasesTest {
     @BeforeEach void context() { context=mock(ExecutionContext.class); notices=mock(NotificationPublisher.class); when(context.actor()).thenReturn(new Actor(user,"VOLUNTARIO",false)); when(context.now()).thenReturn(LocalDateTime.of(2030,1,1,8,0)); }
     @Test void registrationHashesThroughAPortWithoutTouchingPersistenceDetails() {
         var repo=mock(VolunteerRepository.class); var passwords=mock(PasswordHasher.class); var participation=mock(ServiceParticipation.class); when(passwords.encode("contraseña-segura")).thenReturn("hash");
-        var useCase=new AccountsUseCases(repo,passwords,participation,context,notices);
+        var useCase=new AccountsUseCases(repo,passwords,participation,mock(GraduationEligibility.class),mock(AnnualEnrollmentRepository.class),context,notices);
         var r=new AccountsUseCases.Registration(new AccountsUseCases.Profile("Ana","Torres","ana@example.pe","12345678","Estudiante"),"contraseña-segura","900000001");
         useCase.register(r); verify(repo).register(any(UUID.class),eq(r),eq("hash")); verifyNoInteractions(participation);
     }
@@ -34,13 +34,14 @@ class UseCasesTest {
     }
     @Test void accountReviewCoordinatesServiceLocksBeforeSaving() {
         when(context.actor()).thenReturn(new Actor(chief,"JEFATURA",false)); var repo=mock(VolunteerRepository.class); var participation=mock(ServiceParticipation.class);
-        var useCase=new AccountsUseCases(repo,mock(PasswordHasher.class),participation,context,notices);
+        when(repo.profile(user)).thenReturn(Map.of("graduated",true));
+        var useCase=new AccountsUseCases(repo,mock(PasswordHasher.class),participation,mock(GraduationEligibility.class),mock(AnnualEnrollmentRepository.class),context,notices);
         useCase.review(user,new AccountsUseCases.Review("VOLUNTARIO",true,"ACTIVO","Verificado",true,false));
         var order=inOrder(repo,participation); order.verify(participation).lockCommitments(user); order.verify(repo).lock(user); order.verify(repo).save(any(),eq("Verificado")); order.verify(participation).reevaluate(user);
     }
     @Test void chiefHasNoHoursTargetWithoutQueryingHours() {
         when(context.actor()).thenReturn(new Actor(chief,"JEFATURA",true)); var repo=mock(AttendanceRepository.class);
-        var useCase=new AttendanceUseCases(repo,mock(EnrollmentRepository.class),mock(CalloutRepository.class),mock(CalloutWorkflow.class),mock(ServiceMaintenance.class),mock(MonthlyLedger.class),mock(GraduationSettings.class),context,notices);
+        var useCase=new AttendanceUseCases(repo,mock(EnrollmentRepository.class),mock(CalloutRepository.class),mock(CalloutWorkflow.class),mock(ServiceMaintenance.class),mock(MonthlyLedger.class),mock(GraduationSettings.class),mock(ImageInspector.class),context,notices);
         assertEquals(false,((Map<?,?>)useCase.progress()).get("applicable")); verifyNoInteractions(repo);
     }
     @Test void justificationDecisionAppendsAnAdjustmentAfterMonthlyClosure() {
@@ -49,11 +50,11 @@ class UseCasesTest {
         var j=Map.<String,Object>of("id",justification,"callout_id",callout,"volunteer_id",user,"status","PENDIENTE"); when(repo.justification(justification,false)).thenReturn(j); when(repo.justification(justification,true)).thenReturn(j);
         var c=Map.<String,Object>of("id",callout,"start_at",start); when(workflow.locked(callout)).thenReturn(c); when(ledger.closed(c)).thenReturn(true);
         var attendance=new HashMap<String,Object>(Map.of("id",UUID.randomUUID(),"start_at",start,"end_at",start.plusHours(3),"status","AUSENTE","policy_version",2,"justification_status","PENDIENTE","justification_kind","AUSENCIA")); when(repo.justificationAttendance(justification)).thenReturn(attendance);
-        var useCase=new AttendanceUseCases(repo,mock(EnrollmentRepository.class),mock(CalloutRepository.class),workflow,mock(ServiceMaintenance.class),ledger,mock(GraduationSettings.class),context,notices);
+        var useCase=new AttendanceUseCases(repo,mock(EnrollmentRepository.class),mock(CalloutRepository.class),workflow,mock(ServiceMaintenance.class),ledger,mock(GraduationSettings.class),mock(ImageInspector.class),context,notices);
         useCase.resolve(justification,new AttendanceUseCases.Resolution(true,"Evidencia verificada"));
         verify(repo).decision(argThat(d -> d.before()==6 && d.after()==0 && d.actor().equals(chief)));
         verify(repo).adjustment(eq(YearMonth.of(2029,12)),eq(user),any(Justification.Decision.class));
-        verify(notices).publish(eq(user),eq("JUSTIFICACION"),contains("aprobada"),eq("/justifications"));
+        verify(notices).publish(eq(user),eq("JUSTIFICACION"),contains("aprobada"),eq("/justifications?request="+justification));
     }
     @Test void announcementDeliveryUsesTheNotificationPort() {
         when(context.actor()).thenReturn(new Actor(chief,"JEFATURA",false)); var repo=mock(NoticeRepository.class); when(repo.recipients("TODOS")).thenReturn(List.of(user));

@@ -14,6 +14,7 @@ public interface EnrollmentRepository {
     boolean replacementRequested(UUID callout,UUID user);
     void save(UUID existing,UUID user,UUID callout,String position,UUID replacement,UUID assignedBy,LocalDateTime at);
     void cancellation(UUID id,String reason,LocalDateTime at);
+    void clearCancellation(UUID id);
     void cancelReplaced(UUID id);
     void review(UUID id,boolean approved,String comment,LocalDateTime at);
     List<UUID> commitments(UUID user);

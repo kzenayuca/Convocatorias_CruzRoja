@@ -22,7 +22,6 @@ public class ServicesController {
     @PostMapping("/callouts/{id}/enrollments") public void enroll(@PathVariable UUID id,@RequestBody EnrollmentRequest r) { useCases.enroll(id,r); }
     @PostMapping("/callouts/{id}/assignments") public void assign(@PathVariable UUID id,@RequestBody Assignment r) { useCases.assign(id,r); }
     @GetMapping("/callouts/{id}/assignment-candidates") public List<Map<String,Object>> assignmentCandidates(@PathVariable UUID id,@RequestParam String position) { return useCases.assignmentCandidates(id,position); }
-    @PostMapping("/enrollments/{id}/cancel-request") public void cancel(@PathVariable UUID id,@RequestBody Reason r) { useCases.cancellation(id,r); }
     @GetMapping("/enrollments") public List<Map<String,Object>> mine() { return useCases.mine(); }
     @GetMapping("/callouts/{id}/enrollments") public List<Map<String,Object>> applicants(@PathVariable UUID id) { return useCases.applicants(id); }
     @PostMapping("/enrollments/{id}/review") public void review(@PathVariable UUID id,@RequestBody Review r) { useCases.review(id,r); }

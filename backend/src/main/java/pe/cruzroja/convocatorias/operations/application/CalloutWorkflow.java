@@ -31,7 +31,7 @@ public class CalloutWorkflow extends UseCaseSupport implements ServiceParticipat
     public boolean fits(Map<String,Object> c) { return model(c).fits(); }
     public boolean canAdmit(Map<String,Object> c,UUID user,String position,UUID replacing) { return model(c).canAdmit(repository.participant(user).graduated(),position,replacing); }
     public boolean complete(Map<String,Object> c) { return model(c).complete(); }
-    public boolean qualified(Map<String,Object> c,UUID user,String p) { return POSITIONS.contains(p) && (Set.of("GRADUADO","FORMACION").contains(p) || capacity(c,p)>0) && repository.participant(user).qualified(p); }
+    public boolean qualified(Map<String,Object> c,UUID user,String p) { return POSITIONS.contains(p) && (Set.of("GRADUADO","FORMACION").contains(p) || capacity(c,p)>0) && repository.participant(user).qualified(p) && repository.annualEligible(user,time(c,"start_at").getYear()); }
     public boolean overlap(Map<String,Object> c,UUID user) { return repository.overlaps(id(c,"id"),user,time(c,"start_at"),time(c,"end_at")); }
     public boolean compatible(Map<String,Object> c,UUID user) { return !overlap(c,user) && POSITIONS.stream().filter(p -> !p.equals("RESPONSABLE")).anyMatch(p -> qualified(c,user,p)); }
     public void synchronize(Map<String,Object> c) {

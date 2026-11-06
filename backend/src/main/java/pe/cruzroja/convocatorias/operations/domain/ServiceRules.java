@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 /** Reglas puras: no dependen de Spring, de la interfaz ni de la base de datos. */
 public final class ServiceRules {
-    public static final int JUSTIFICATION_DEADLINE_HOURS = 48;
+    public static final int JUSTIFICATION_DEADLINE_HOURS = 72;
 
     private ServiceRules() { }
 
@@ -23,12 +23,9 @@ public final class ServiceRules {
         return justificationApproved ? 0 : scheduledHours * 2;
     }
 
-    public static boolean canJustify(LocalDateTime serviceStart, LocalDateTime serviceEnd, LocalDateTime submittedAt,
-                                     LocalDateTime replacementConfirmedAt, boolean hasEvidence) {
-        return serviceStart != null && serviceEnd != null && submittedAt != null && replacementConfirmedAt != null
-                && hasEvidence && !replacementConfirmedAt.isAfter(serviceStart)
-                && !submittedAt.isBefore(serviceEnd)
-                && !submittedAt.isAfter(serviceEnd.plusHours(JUSTIFICATION_DEADLINE_HOURS));
+    public static boolean canJustify(LocalDateTime serviceEnd, LocalDateTime submittedAt) {
+        return serviceEnd != null && submittedAt != null && !submittedAt.isBefore(serviceEnd)
+                && !isLateJustification(serviceEnd,submittedAt);
     }
 
     public static double recognizedHours(LocalDateTime start, LocalDateTime end,

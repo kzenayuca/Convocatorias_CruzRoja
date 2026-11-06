@@ -17,6 +17,10 @@ public interface CalloutRepository {
     String responsiblePhone(UUID callout,UUID volunteer);
     List<UUID> activeUsers();
     void create(UUID id,ServicesUseCases.Callout request,UUID creator,String code);
+    int nextCodeSequence(String category,int year);
+    boolean codeReserved(String code);
+    void generatedCode(UUID id,ServiceCode code);
+    boolean annualEligible(UUID volunteer,int year);
     void edit(UUID id,ServicesUseCases.Callout request,String code);
     void recordCode(UUID id,String code,String type,UUID actor);
     List<Map<String,Object>> codes();

@@ -5,7 +5,7 @@ Un espacio simple para consultar servicios y organizar el voluntariado.
 
 **React + TypeScript · Spring Boot · PostgreSQL**
 
-**Versión 2.6.0:** aplicación web con backend de **monolito modular + DDD + Clean Architecture**, conservando las reglas, pantallas, API y datos de la versión anterior. [Ver arquitectura y contextos](ARCHITECTURE.md).
+**Versión 2.7.0:** monolito modular con **Web + DDD + Clean Architecture**, códigos automáticos E/I/G, formación por saldo neto histórico, inscripción anual de graduados y reportes mensual/anual descargables. Se conservan los datos anteriores. [Ver arquitectura y contextos](ARCHITECTURE.md).
 
 ## 🚀 Arranque local
 

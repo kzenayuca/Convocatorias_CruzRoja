@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api, monthNow, Row, Session, useData } from './api';
-import { ErrorNotice } from './components';
+import { ErrorNotice, SaveFeedback } from './components';
 import { AdministrationPage, Login, ProfilePage, UsersPage } from './AccountPages';
 import { SchedulePage } from './SchedulePage';
 import { CalloutsPage, DetailPage } from './ServicePages';
@@ -34,7 +34,7 @@ function Workspace({ user, logout }: { user: Session; logout: () => Promise<void
   const count = notices.data.filter(n => !n.is_read).length;
   return <><a className="skip" href="#main">Saltar al contenido</a><header><div><strong>CRUZ ROJA AREQUIPA</strong><small>Filial Arequipa</small></div><div><NavLink className="icon-button" to="/notifications" aria-label={`${count} notificaciones sin leer`}>♧ {count}</NavLink><Link className="user-chip" to="/profile"><span className="avatar">{user.name.charAt(0)}</span><span>{user.name}<small className="role-label">{user.role}</small></span></Link><button className="header-button" onClick={() => { void logout().catch(e => setError(e.message)); }}>Salir</button></div></header><div className="layout"><aside><nav aria-label="Navegación principal">{nav.map(item => <NavLink key={item.to} to={item.to} end={item.to === '/'}><span aria-hidden="true">{item.icon}</span>{item.label}</NavLink>)}</nav></aside><main id="main"><ErrorNotice message={error}/><Routes>
     <Route path="/" element={<Home user={user}/>}/><Route path="/schedule" element={<SchedulePage user={user}/>}/><Route path="/administration" element={canReport ? <AdministrationPage/> : <Home user={user}/>}/><Route path="/callouts" element={<CalloutsPage user={user}/>}/><Route path="/callouts/:id" element={<DetailPage user={user}/>}/><Route path="/history" element={<CalloutsPage user={user} history/>}/><Route path="/services" element={canReport ? <ReportsPage/> : <ServicesPage/>}/><Route path="/profile" element={<ProfilePage/>}/><Route path="/justifications" element={<JustificationsPage user={user}/>}/><Route path="/notifications" element={<NotificationsPage user={user}/>}/><Route path="/reports" element={canReport ? <ReportsPage/> : <Home user={user}/>}/><Route path="/users" element={user.role === 'JEFATURA' ? <UsersPage/> : <Home user={user}/>}/><Route path="*" element={<Home user={user}/>}/>
-  </Routes></main></div></>;
+  </Routes><SaveFeedback/></main></div></>;
 }
 function App() {
   const [user, setUser] = useState<Session | null>(null); const [loading, setLoading] = useState(true); const navigate = useNavigate();

@@ -17,8 +17,10 @@ public class ServicesUseCases extends UseCaseSupport {
     public ServicesUseCases(CalloutRepository repository,EnrollmentRepository enrollments,ServiceMaintenance maintenance,CalloutWorkflow workflow,MonthlyLedger ledger,ImageInspector images,ExecutionContext context,NotificationPublisher notifications) {
         super(context,notifications); this.repository=repository; this.enrollments=enrollments; this.maintenance=maintenance; this.workflow=workflow; this.ledger=ledger; this.images=images;
     }
-    public record Callout(String title,String description,LocalDateTime start,LocalDateTime end,LocalDateTime deadline,String location,String requirements,Integer totalVolunteers,int radioSlots,int pilotSlots,String kind,String area,String code,String serviceType,int graduateSlots) {
+    public record Callout(String title,String description,LocalDateTime start,LocalDateTime end,LocalDateTime deadline,String location,String requirements,Integer totalVolunteers,int radioSlots,int pilotSlots,String kind,String area,String code,String serviceType,int graduateSlots,String category) {
+        public Callout(String title,String description,LocalDateTime start,LocalDateTime end,LocalDateTime deadline,String location,String requirements,Integer totalVolunteers,int radioSlots,int pilotSlots,String kind,String area,String code,String serviceType,int graduateSlots) { this(title,description,start,end,deadline,location,requirements,totalVolunteers,radioSlots,pilotSlots,kind,area,code,serviceType,graduateSlots,"I"); }
         public Callout {
+            category=category==null?"I":category; valid(Set.of("E","I","G").contains(category),"Tipo de servicio: E, I o G.");
             required(title,150,"Título"); required(description,5000,"Descripción"); required(location,200,"Lugar"); required(requirements,5000,"Requisitos"); required(kind,30,"Tipo"); required(area,120,"Área"); required(serviceType,100,"Tipo de servicio");
             valid(code==null || code.length()<=40,"Código demasiado largo."); valid(totalVolunteers!=null && totalVolunteers>=1 && totalVolunteers<=10000,"Total no válido.");
             new TeamCapacity(totalVolunteers,graduateSlots,radioSlots,pilotSlots); valid(radioSlots<=1 && pilotSlots<=1,"Solo se admite un piloto y un radioperador."); new ServiceWindow(start,end,deadline);
@@ -35,8 +37,7 @@ public class ServicesUseCases extends UseCaseSupport {
     public record Operation(String action,String observations) { public Operation { required(action,30,"Acción"); required(observations,3000,"Observaciones"); } }
     private Map<String,Object> presentation(Map<String,Object> c) {
         c.put("total_volunteers",workflow.total(c)); c.put("positions",workflow.positions(c)); c.put("can_edit",workflow.canEdit(c)); c.put("can_operate",workflow.canOperate(c)); c.put("can_view_team",workflow.canEdit(c)); c.put("can_upload_photo",workflow.canOperate(c));
-        var replacements=repository.replacementPositions(id(c,"id"));
-        c.put("eligible_positions",CalloutWorkflow.POSITIONS.stream().filter(p -> !p.equals("RESPONSABLE") && (!p.equals("FORMACION") || replacements.contains(p)) && (!p.equals("GRADUADO") || workflow.capacity(c,"GRADUADO")>0 || replacements.contains(p)) && workflow.qualified(c,actor().id(),p)).toList());
+        c.put("eligible_positions",CalloutWorkflow.POSITIONS.stream().filter(p -> !Set.of("RESPONSABLE","FORMACION").contains(p) && (!p.equals("GRADUADO") || workflow.capacity(c,"GRADUADO")>0) && workflow.qualified(c,actor().id(),p)).toList());
         var own=enrollments.byUser(id(c,"id"),actor().id(),false); c.put("my_enrollment",own.isEmpty()?null:Map.of("id",own.get(0).get("id"),"status",own.get(0).get("status"),"position",own.get(0).get("position")));
         c.put("contact","Consultar a jefatura");
         if((chief() || !own.isEmpty() && "CONFIRMADA".equals(own.get(0).get("status"))) && c.get("responsible_id")!=null) { String phone=repository.responsiblePhone(id(c,"id"),id(c,"responsible_id")); if(phone!=null && !phone.isBlank()) c.put("contact",phone); }
@@ -54,9 +55,14 @@ public class ServicesUseCases extends UseCaseSupport {
         require(workflow.canEdit(c) || own || (!time(c,"end_at").isAfter(now())?repository.attended(id,actor().id()):Set.of("ABIERTA","CERRADA").contains(c.get("status")) && workflow.compatible(c,actor().id())),"No tienes acceso a esta convocatoria."); return presentation(c);
     }
     private String code(String value) { return value==null || value.isBlank()?null:value.trim().toUpperCase(Locale.ROOT); }
+    private ServiceCode reserveCode(String category) {
+        var created=now(); ServiceCode generated;
+        do { generated=new ServiceCode(category,created,repository.nextCodeSequence(category,created.getYear())); } while(repository.codeReserved(generated.value()));
+        return generated;
+    }
     public Map<String,UUID> create(Callout r) {
-        require(chief(),"No puedes crear convocatorias."); new ServiceWindow(r.start(),r.end(),r.deadline()).validatePlanning(now()); UUID id=UUID.randomUUID(); String code=code(r.code());
-        repository.create(id,r,actor().id(),code); repository.recordCode(id,code,r.serviceType(),actor().id()); return Map.of("id",id);
+        require(chief(),"No puedes crear convocatorias."); new ServiceWindow(r.start(),r.end(),r.deadline()).validatePlanning(now()); UUID id=UUID.randomUUID(); var generated=reserveCode(r.category());
+        repository.create(id,r,actor().id(),generated.value()); repository.generatedCode(id,generated); repository.recordCode(id,generated.value(),r.serviceType(),actor().id()); return Map.of("id",id);
     }
     public void edit(UUID id,Callout r) {
         var c=workflow.locked(id); workflow.editPermission(c); new ServiceWindow(r.start(),r.end(),r.deadline()).validatePlanning(now());
@@ -68,9 +74,12 @@ public class ServicesUseCases extends UseCaseSupport {
             for(var e:team.stream().filter(e -> "CONFIRMADA".equals(e.get("status"))).sorted(Comparator.comparing(e -> id(e,"volunteer_id"))).toList()) { enrollments.lockVolunteer(id(e,"volunteer_id")); valid(!workflow.overlap(proposed,id(e,"volunteer_id")),"El nuevo horario se cruza con otro servicio de un participante."); }
         }
         var proposed=new HashMap<>(c); proposed.put("total_volunteers",r.totalVolunteers()); proposed.put("graduate_slots",r.graduateSlots()); proposed.put("radio_slots",r.radioSlots()); proposed.put("pilot_slots",r.pilotSlots());
-        valid(workflow.fits(proposed),"Los nuevos cupos no admiten al equipo inscrito o dejan sin espacio las funciones y los graduados requeridos."); String code=code(r.code());
-        require(chief() || Objects.equals(code,c.get("service_code")),"Solo jefatura modifica el código."); valid(c.get("service_code")==null || code!=null,"No retires un código ya asignado.");
-        repository.edit(id,r,code); if(!Objects.equals(code,c.get("service_code"))) repository.recordCode(id,code,r.serviceType(),actor().id());
+        valid(workflow.fits(proposed),"Los nuevos cupos no admiten al equipo inscrito o dejan sin espacio las funciones y los graduados requeridos.");
+        valid(r.code()==null || Objects.equals(code(r.code()),c.get("service_code")),"El código asignado es inmutable.");
+        valid(c.get("service_category")==null || r.category().equals(c.get("service_category")),"La categoría del código se fija al crear la convocatoria.");
+        String storedCode=(String)c.get("service_code");
+        if(storedCode==null && chief()) { var generated=reserveCode(r.category()); storedCode=generated.value(); repository.generatedCode(id,generated); repository.recordCode(id,storedCode,r.serviceType(),actor().id()); }
+        repository.edit(id,r,storedCode);
         workflow.synchronize(workflow.locked(id)); workflow.announce(c,"Datos actualizados: revisa horario, lugar y requisitos. "+r.location()+" · "+r.start());
     }
     public void status(UUID id,Status r) {
@@ -89,33 +98,28 @@ public class ServicesUseCases extends UseCaseSupport {
         return enrollments.candidates(id).stream().filter(u -> workflow.qualified(c,id(u,"id"),position) && !workflow.overlap(c,id(u,"id")) && workflow.canAdmit(c,id(u,"id"),position,null)).toList();
     }
     private void enrollFor(UUID id,UUID user,EnrollmentRequest r,boolean assigned) {
-        var c=workflow.locked(id); valid(!r.position().equals("RESPONSABLE"),"El responsable lo asigna jefatura y cuenta dentro del total."); valid(!r.position().equals("FORMACION") || r.replacementFor()!=null,"Voluntario incluye graduados y formación; no hay nuevas plazas exclusivas para formación.");
-        workflow.model(c).requireEnrollment(r.requirementsAccepted(),assigned,r.replacementFor()!=null,now()); enrollments.lockVolunteer(user);
-        valid(workflow.qualified(c,user,r.position()),"La persona no es voluntaria activa o no cumple la graduación o la habilitación del puesto."); valid(!workflow.overlap(c,user),"La persona tiene otro servicio en ese horario.");
+        valid(r.replacementFor()==null,"Los reemplazos se solicitan por nombre en Justificaciones y solo Jefatura puede asignarlos.");
+        var c=workflow.locked(id); valid(!r.position().equals("RESPONSABLE"),"El responsable lo asigna jefatura y cuenta dentro del total."); valid(!r.position().equals("FORMACION"),"Voluntario incluye graduados y formación; no hay nuevas plazas exclusivas para formación.");
+        workflow.model(c).requireEnrollment(r.requirementsAccepted(),assigned,false,now()); enrollments.lockVolunteer(user);
+        valid(workflow.qualified(c,user,r.position()),"Se requiere cuenta activa, condición/habilitación del puesto e inscripción anual del graduado para el año del servicio."); valid(!workflow.overlap(c,user),"La persona tiene otro servicio en ese horario.");
         var previous=enrollments.byUser(id,user,true); valid(previous.isEmpty() || Set.of("PENDIENTE","EXPIRADA").contains(previous.get(0).get("status")),"Ya tienes una inscripción o una resolución en esta convocatoria.");
-        UUID replacing=null;
-        if(r.replacementFor()!=null) { var target=enrollments.find(r.replacementFor(),false); valid(id.equals(target.get("callout_id")) && text(target,"status").equals("CONFIRMADA") && target.get("cancellation_requested_at")!=null && r.position().equals(target.get("position")),"El titular debe solicitar cancelación; el reemplazo ocupa exactamente su puesto."); valid(!user.equals(target.get("volunteer_id")),"No puedes reemplazarte."); valid(enrollments.pendingReplacements(r.replacementFor())==0,"Ya hay un reemplazo pendiente de revisión para esta plaza."); replacing=id(target,"volunteer_id"); }
-        valid(workflow.canAdmit(c,user,r.position(),replacing),"No hay cupo compatible: se reserva espacio para los graduados, piloto o radioperador requeridos. No hay lista de espera.");
-        enrollments.save(previous.isEmpty()?null:id(previous.get(0),"id"),user,id,r.position(),r.replacementFor(),assigned?actor().id():null,now());
-        if(r.replacementFor()==null) { workflow.assignResponsible(c); workflow.synchronize(c); }
-        notifyUser(user,"INSCRIPCION",c.get("title")+": "+(assigned?"Jefatura te inscribió directamente en "+r.position()+". ":"")+(r.replacementFor()==null?"CONFIRMADA":"PENDIENTE_REEMPLAZO"),"/services");
-    }
-    public void cancellation(UUID id,Reason r) {
-        var e=enrollments.find(id,false); var c=workflow.locked(id(e,"callout_id")); e=enrollments.find(id,true);
-        require(actor().id().equals(e.get("volunteer_id")),"Solo puedes solicitar tu cancelación."); valid(text(e,"status").equals("CONFIRMADA") && c.get("opened_at")==null && !text(c,"status").equals("CANCELADA"),"La inscripción no se puede cancelar."); valid(ServiceRules.canRequestCancellation(time(c,"start_at"),now()),"La solicitud requiere al menos 48 horas de anticipación. Contacta a jefatura para una excepción.");
-        enrollments.cancellation(id,r.reason(),now()); notifyUser(actor().id(),"INSCRIPCION","Cancelación solicitada. Sigues inscrito hasta que se acepte tu reemplazo.","/services");
+        valid(workflow.canAdmit(c,user,r.position(),null),"No hay cupo compatible: se reserva espacio para los graduados, piloto o radioperador requeridos. No hay lista de espera.");
+        enrollments.save(previous.isEmpty()?null:id(previous.get(0),"id"),user,id,r.position(),null,assigned?actor().id():null,now());
+        workflow.assignResponsible(c); workflow.synchronize(c);
+        var saved=enrollments.byUser(id,user,false).get(0);
+        notifyUser(user,"INSCRIPCION",c.get("title")+": "+(assigned?"Jefatura te inscribió directamente en "+r.position()+". ":"")+"ACEPTADA","/services?enrollment="+saved.get("id"));
     }
     public List<Map<String,Object>> mine() { maintenance.refresh(); return enrollments.mine(actor().id()); }
-    public List<Map<String,Object>> applicants(UUID id) { maintenance.refresh(); workflow.teamPermission(repository.snapshot(id,false)); return enrollments.applicants(id); }
+    public List<Map<String,Object>> applicants(UUID id) { maintenance.refresh(); workflow.teamPermission(repository.snapshot(id,false)); var rows=enrollments.applicants(id); if(!chief()) for(var row:rows) row.remove("cancellation_reason"); return rows; }
     public void review(UUID id,Review r) {
         var initial=enrollments.find(id,false); var c=workflow.locked(id(initial,"callout_id")); var e=enrollments.find(id,true);
         valid(time(c,"start_at").isAfter(now()) && Set.of("ABIERTA","CERRADA").contains(c.get("status")),"El servicio no admite revisiones de inscripción.");
-        if(text(e,"status").equals("PENDIENTE_REEMPLAZO")) { workflow.operationPermission(c); if(r.approved()) {
+        if(text(e,"status").equals("PENDIENTE_REEMPLAZO")) { require(chief(),"Solo Jefatura puede resolver un reemplazo."); if(r.approved()) {
             var target=enrollments.find(id(e,"replacement_for"),true); valid(text(target,"status").equals("CONFIRMADA") && target.get("cancellation_requested_at")!=null,"La plaza original ya no está disponible para reemplazo.");
             enrollments.lockVolunteer(id(e,"volunteer_id")); valid(workflow.qualified(c,id(e,"volunteer_id"),text(e,"position")) && !workflow.overlap(c,id(e,"volunteer_id")),"El reemplazo ya no cumple los requisitos o tiene un cruce."); valid(workflow.canAdmit(c,id(e,"volunteer_id"),text(e,"position"),id(target,"volunteer_id")),"El reemplazo no conserva el mínimo de graduados o los cupos reservados.");
-            enrollments.cancelReplaced(id(target,"id")); notifyUser(id(target,"volunteer_id"),"INSCRIPCION","Cancelación aceptada con reemplazo. No se generará inasistencia.","/services");
+            enrollments.cancelReplaced(id(target,"id")); notifyUser(id(target,"volunteer_id"),"INSCRIPCION","Cancelación aceptada con reemplazo. No se generará inasistencia.","/services?enrollment="+target.get("id"));
         }} else { require(chief(),"Solo jefatura puede anular una inscripción aceptada automáticamente."); valid(!r.approved() && text(e,"status").equals("CONFIRMADA"),"La inscripción ya está aceptada o resuelta."); }
-        enrollments.review(id,r.approved(),r.comment(),now()); workflow.assignResponsible(c); workflow.synchronize(c); notifyUser(id(e,"volunteer_id"),"INSCRIPCION",c.get("title")+": "+(r.approved()?"CONFIRMADA":"RECHAZADA")+". "+r.comment(),"/services");
+        enrollments.review(id,r.approved(),r.comment(),now()); workflow.assignResponsible(c); workflow.synchronize(c); notifyUser(id(e,"volunteer_id"),"INSCRIPCION",c.get("title")+": "+(r.approved()?"ACEPTADA":"RECHAZADA")+". "+r.comment(),"/services?enrollment="+id);
     }
     public void operation(UUID id,Operation r) { var c=workflow.locked(id); workflow.operationPermission(c); workflow.model(c).requireOperation(r.action(),now()); repository.operation(id,r.action(),r.observations(),now()); }
     public void photo(UUID id,byte[] bytes) { var c=workflow.locked(id); workflow.operationPermission(c); valid(bytes!=null && bytes.length<=10*1024*1024,"La foto debe pesar como máximo 10 MB."); String type=images.validate(bytes); repository.photo(id,bytes,type,actor().id(),now()); }

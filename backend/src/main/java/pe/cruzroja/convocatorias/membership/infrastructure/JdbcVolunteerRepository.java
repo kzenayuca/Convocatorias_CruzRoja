@@ -23,9 +23,15 @@ public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRep
         db.update("""
             INSERT INTO profile_changes(user_id,name,surnames,email,document,occupation) VALUES (?,?,?,?,?,?)
             ON CONFLICT(user_id) DO UPDATE SET name=EXCLUDED.name,surnames=EXCLUDED.surnames,email=EXCLUDED.email,
-            document=EXCLUDED.document,occupation=EXCLUDED.occupation,submitted_at=CURRENT_TIMESTAMP
+            document=EXCLUDED.document,occupation=EXCLUDED.occupation,submitted_at=CURRENT_TIMESTAMP,request_id=gen_random_uuid()
             """,id,p.name().trim(),p.surnames().trim(),p.email().trim().toLowerCase(Locale.ROOT),p.document(),p.occupation());
+        db.update("INSERT INTO profile_change_requests(id,user_id,name,surnames,email,document,occupation,submitted_at) SELECT request_id,user_id,name,surnames,email,document,occupation,submitted_at FROM profile_changes WHERE user_id=?",id);
     }
+    public boolean hasPendingChange(UUID user) { return db.queryForObject("SELECT EXISTS(SELECT 1 FROM profile_changes WHERE user_id=?)",Boolean.class,user); }
+    public List<UUID> chiefs() { return db.queryForList("SELECT id FROM users WHERE role='JEFATURA' AND status='ACTIVO'",UUID.class); }
+    public List<Map<String,Object>> profileRequests(UUID user) { return rows("SELECT r.*,u.name AS resolved_name FROM profile_change_requests r LEFT JOIN users u ON u.id=r.resolved_by WHERE r.user_id=? ORDER BY r.submitted_at DESC,r.id",user); }
+    public Map<String,Object> profileRequest(UUID request) { return row("SELECT r.*,u.name AS resolved_name FROM profile_change_requests r LEFT JOIN users u ON u.id=r.resolved_by WHERE r.id=?",request); }
+    public void resolveChange(UUID request,boolean approved,String comment,UUID actor,java.time.LocalDateTime at) { db.update("UPDATE profile_change_requests SET status=?,resolution_comment=?,resolved_by=?,resolved_at=? WHERE id=?",approved?"APROBADA":"RECHAZADA",comment,actor,at,request); }
     public List<Map<String,Object>> changes() { return rows("SELECT * FROM profile_changes ORDER BY submitted_at"); }
     public Map<String,Object> lockChange(UUID id) { return row("SELECT * FROM profile_changes WHERE user_id=? FOR UPDATE",id); }
     public void approveChange(UUID id,Map<String,Object> p) {

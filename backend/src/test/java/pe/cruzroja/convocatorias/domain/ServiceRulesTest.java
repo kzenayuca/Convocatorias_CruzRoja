@@ -18,10 +18,11 @@ class ServiceRulesTest {
     }
     @Test void justificationDeadlineStartsAtServiceEnd() {
         var end=start.plusHours(3);
-        assertFalse(ServiceRules.isLateJustification(end,end.plusHours(48)));
-        assertTrue(ServiceRules.isLateJustification(end,end.plusHours(48).plusSeconds(1)));
-        assertTrue(ServiceRules.canJustify(start,end,end.plusHours(48),start.minusMinutes(1),true));
-        assertFalse(ServiceRules.canJustify(start,end,end.plusHours(1),start.plusMinutes(1),true));
+        assertFalse(ServiceRules.isLateJustification(end,end.plusHours(72)));
+        assertTrue(ServiceRules.isLateJustification(end,end.plusHours(72).plusSeconds(1)));
+        assertTrue(ServiceRules.canJustify(end,end.plusHours(72)));
+        assertFalse(ServiceRules.canJustify(end,end.plusHours(72).plusSeconds(1)));
+        assertFalse(ServiceRules.canJustify(end,end.minusSeconds(1)));
     }
     @Test void cancellationRequires48HoursOfNotice() {
         assertTrue(ServiceRules.canRequestCancellation(start,start.minusHours(48)));

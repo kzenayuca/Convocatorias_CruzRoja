@@ -54,9 +54,13 @@ La validación de comandos está en constructores Java: también aplica si se ej
 - `Participant` decide elegibilidad por condición/habilitaciones, sin niveles y sin convertir jefatura en un voluntario inscribible.
 - `Attendance` calcula crédito y deducciones, y valida confirmaciones y ajustes excepcionales.
 - `Justification.resolve` produce una decisión inmutable con autor, fecha, motivo y efecto firmado sobre la deducción. El caso de uso la persiste y, si el mes está cerrado, añade el ajuste asociado.
+- `AttendanceReview` resuelve una solicitud de revisión con decisión, autor y fecha; aprobarla exige confirmar las marcas y horas, rechazarla no las altera. Las proyecciones de perfil y revisión conservan la solicitud después de resolver para que el enlace de la notificación siga siendo consultable.
+- `ReplacementRequest` protege la anticipación de 48 horas y la asignación obligatoria a otra persona con requisitos verificados. `ReplacementUseCases` coordina propuesta, elegibilidad, cancelación del titular, inscripción del reemplazo, responsable, decisión auditada y notificaciones bajo la misma transacción. `ServiceRules` fija 72 horas desde el fin para justificar ausencias y tardanzas.
 - `MonthlyBalance` calcula saldo vigente conservando el cierre original.
 - `MaterialRequest` impide repetir recepción/devolución o superar las cantidades recibidas.
 - `Volunteer` protege los roles admitidos y el acceso propio de jefatura.
+- `AnnualEnrollment` define ciclos enero-diciembre. Su caso de uso registra una renovación idempotente con autor/fecha; la proyección de elegibilidad de Operaciones comprueba el ciclo del año del servicio para graduados. La formación mantiene saldo histórico entre años. `GraduationEligibility` es el contrato compartido de consulta del saldo neto/meta: Membresía exige que se alcancen antes de aprobar la graduación, sin importar repositorios de Operaciones.
+- `ServiceCode` define categoría E/I/G, mes/año de creación y correlativo. La infraestructura reserva el siguiente número por categoría/año con UPSERT y bloqueo de fila, dentro de la misma transacción de creación. No hay `MAX+1` en memoria ni generación en el navegador; las reservas históricas se respetan. Editar fechas no renumera.
 
 Las decisiones auditadas no constituyen event sourcing: el estado actual sigue guardado en las tablas existentes y el historial es anexo.
 
@@ -66,13 +70,17 @@ Las decisiones auditadas no constituyen event sourcing: el estado actual sigue g
 
 Los repositorios mantienen los bloqueos `FOR UPDATE` y el orden de adquisición: convocatoria antes de perfil/inscripción; al cerrar un mes se bloquean sus convocatorias ordenadas. Así, inscripción directa y autoinscripción compiten por el mismo cupo y los fallos revierten cambios parciales. Los avisos persistentes participan en la transacción local; no hay entrega externa asíncrona.
 
+Las solicitudes preventivas usan `justifications.kind='REEMPLAZO'`, vinculadas a la inscripción y sin crear una ausencia ficticia; las posteriores mantienen su asistencia original. La evidencia binaria nunca se carga en proyecciones de listado. Su descarga exige identidad de solicitante o Jefatura. Un responsable notificado puede consultar únicamente un resumen operativo puntual; no accede al sustento ni al listado de solicitudes ajenas. Los endpoints multipart traducen el archivo a bytes y la decodificación se realiza por el puerto `ImageInspector`.
+
+Los reportes anuales reutilizan las doce proyecciones mensuales: los cierres originales siguen inmutables y los ajustes se suman solo en su mes de origen. No se guarda un segundo saldo anual que pueda desincronizarse. Los PDF personales calculan exclusivamente para el actor autenticado; los generales mantienen autorización de Jefatura en la aplicación.
+
 ## Proyecciones y compatibilidad
 
 La API mantiene las rutas, nombres JSON y tipos de respuesta usados por React. Los listados, reportes y vistas conservan **proyecciones de lectura** `Map<String,Object>` para no cambiar el contrato existente. No son entidades ni agregados de dominio y no contienen SQL. Los agregados y valores del dominio son tipados.
 
 El adaptador JSON expone los `LocalDateTime` con offset de Perú (`-05:00`), igual que los timestamps anteriores, para que la web no cambie horas según la zona del navegador. Esta conversión y su prueba pertenecen al adaptador, no al dominio.
 
-Los comandos son objetos de entrada del núcleo; los adaptadores pueden deserializarlos sin acoplarlos a anotaciones JSON o de validación. La refactorización no necesita alterar tablas, IDs, contraseñas, inscripciones, fotos, cierres ni historial.
+Los comandos son objetos de entrada del núcleo; los adaptadores pueden deserializarlos sin acoplarlos a anotaciones JSON o de validación. La refactorización arquitectónica no altera los datos; los nuevos requisitos de reemplazo se aplican con una ampliación idempotente del esquema, sin borrar IDs, contraseñas, inscripciones, fotos, cierres ni historial. La propuesta preventiva se envía por nombre; la asignación mantiene IDs internos para no confundir homónimos. La antigua autoinscripción de reemplazos se rechaza en backend.
 
 ## Comprobaciones automáticas
 

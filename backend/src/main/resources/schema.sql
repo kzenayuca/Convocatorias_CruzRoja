@@ -271,3 +271,66 @@ CREATE TABLE IF NOT EXISTS monthly_report_adjustments (
     deduction_delta NUMERIC(12,4) NOT NULL, created_at TIMESTAMP NOT NULL
 );
 CREATE INDEX IF NOT EXISTS monthly_adjustment_user ON monthly_report_adjustments(month,user_id);
+
+-- Solicitudes preventivas de reemplazo y evidencia privada; se conserva todo el historial previo.
+ALTER TABLE justifications ALTER COLUMN absence_id DROP NOT NULL;
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS enrollment_id UUID REFERENCES enrollments(id);
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS proposed_replacement_name VARCHAR(281);
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS assigned_replacement_id UUID REFERENCES users(id);
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS evidence BYTEA;
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS evidence_type VARCHAR(30);
+CREATE UNIQUE INDEX IF NOT EXISTS one_pending_replacement_request ON justifications(enrollment_id)
+WHERE kind='REEMPLAZO' AND status='PENDIENTE';
+
+-- Ciclos administrativos y códigos automáticos; los datos previos no se renumeran.
+CREATE TABLE IF NOT EXISTS annual_enrollments (
+    user_id UUID NOT NULL REFERENCES users(id), year INT NOT NULL CHECK(year BETWEEN 2000 AND 9999),
+    registered_by UUID REFERENCES users(id), registered_at TIMESTAMP NOT NULL,
+    source VARCHAR(30) NOT NULL, PRIMARY KEY(user_id,year)
+);
+CREATE TABLE IF NOT EXISTS graduation_history (
+    id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id), approved_by UUID NOT NULL REFERENCES users(id),
+    approved_at TIMESTAMP NOT NULL, net_hours NUMERIC(12,4) NOT NULL, required_hours NUMERIC(12,4) NOT NULL, reason TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS service_code_counters (
+    category VARCHAR(1) NOT NULL CHECK(category IN ('E','I','G')), year INT NOT NULL,
+    last_value INT NOT NULL CHECK(last_value>0), PRIMARY KEY(category,year)
+);
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS service_category VARCHAR(1) CHECK(service_category IN ('E','I','G'));
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS code_year INT;
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS code_sequence INT;
+ALTER TABLE callouts ADD COLUMN IF NOT EXISTS code_created_at TIMESTAMP;
+CREATE UNIQUE INDEX IF NOT EXISTS callout_category_sequence ON callouts(service_category,code_year,code_sequence);
+CREATE TABLE IF NOT EXISTS application_migrations (id VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
+-- Una sola transición: mantiene compromisos existentes, sin renovar automáticamente cada enero.
+INSERT INTO annual_enrollments(user_id,year,registered_at,source)
+SELECT DISTINCT u.id,EXTRACT(YEAR FROM c.start_at)::int,CURRENT_TIMESTAMP,'MIGRACION'
+FROM users u JOIN enrollments e ON e.volunteer_id=u.id JOIN callouts c ON c.id=e.callout_id
+WHERE u.role='VOLUNTARIO' AND u.graduated=true AND EXTRACT(YEAR FROM c.start_at)>=2000
+AND e.status='CONFIRMADA' AND NOT EXISTS(SELECT 1 FROM application_migrations WHERE id='annual-enrollments-v1')
+ON CONFLICT DO NOTHING;
+INSERT INTO application_migrations(id) VALUES('annual-enrollments-v1') ON CONFLICT DO NOTHING;
+-- Meta ilustrativa inicial; nunca reemplaza una meta ya configurada por Jefatura.
+UPDATE volunteer_hour_targets SET hours=200 WHERE condition='FORMACION' AND hours IS NULL;
+
+-- Solicitudes navegables e historial de decisiones: los enlaces no desaparecen al resolver.
+ALTER TABLE profile_changes ADD COLUMN IF NOT EXISTS request_id UUID NOT NULL DEFAULT gen_random_uuid();
+CREATE UNIQUE INDEX IF NOT EXISTS profile_change_request_id ON profile_changes(request_id);
+CREATE TABLE IF NOT EXISTS profile_change_requests (
+    id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id),
+    name VARCHAR(120) NOT NULL, surnames VARCHAR(160) NOT NULL, email VARCHAR(180) NOT NULL,
+    document VARCHAR(20) NOT NULL, occupation VARCHAR(160) NOT NULL, submitted_at TIMESTAMP NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE', resolution_comment TEXT,
+    resolved_by UUID REFERENCES users(id), resolved_at TIMESTAMP
+);
+INSERT INTO profile_change_requests(id,user_id,name,surnames,email,document,occupation,submitted_at)
+SELECT request_id,user_id,name,surnames,email,document,occupation,submitted_at FROM profile_changes ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS attendance_review_requests (
+    id UUID PRIMARY KEY, attendance_id UUID NOT NULL REFERENCES attendance_records(id),
+    volunteer_id UUID NOT NULL REFERENCES users(id), reason TEXT NOT NULL, submitted_at TIMESTAMP NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE', resolution_comment TEXT,
+    resolved_by UUID REFERENCES users(id), resolved_at TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_pending_attendance_review ON attendance_review_requests(attendance_id) WHERE status='PENDIENTE';
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS event_key VARCHAR(300);
+CREATE UNIQUE INDEX IF NOT EXISTS notification_event_once ON notifications(recipient_id,event_key) WHERE event_key IS NOT NULL;

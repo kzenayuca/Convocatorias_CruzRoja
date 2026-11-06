@@ -11,11 +11,11 @@ import pe.cruzroja.convocatorias.operations.domain.*;
 @Repository
 public class JdbcCalloutRepository extends JdbcSupport implements CalloutRepository {
     public JdbcCalloutRepository(JdbcTemplate db) { super(db); }
-    private static final String FIELDS="id,title,start_at,end_at,deadline,kind,status,created_by,responsible_id,opened_at,closed_at,total_volunteers,socorrista_slots,graduate_slots,trainee_slots,radio_slots,pilot_slots,service_code,requirements,photo_uploaded_at";
+    private static final String FIELDS="id,title,start_at,end_at,deadline,kind,status,created_by,responsible_id,opened_at,closed_at,total_volunteers,socorrista_slots,graduate_slots,trainee_slots,radio_slots,pilot_slots,service_code,requirements,photo_uploaded_at,service_category,code_year,code_sequence,code_created_at";
     private static final String VIEW="""
         SELECT c.id,c.title,c.description,c.start_at,c.end_at,c.deadline,c.location,c.requirements,
         c.status,c.kind,c.area,c.contact,c.responsible_id,c.created_by,c.opened_at,c.closed_at,c.observations,
-        c.service_code,c.service_type,c.total_volunteers,c.socorrista_slots,c.graduate_slots,c.trainee_slots,c.radio_slots,c.pilot_slots,c.planned_hours,
+        c.service_code,c.service_type,c.service_category,c.code_year,c.code_sequence,c.code_created_at,c.total_volunteers,c.socorrista_slots,c.graduate_slots,c.trainee_slots,c.radio_slots,c.pilot_slots,c.planned_hours,
         (c.team_photo IS NOT NULL) AS has_photo,c.photo_uploaded_at,u.name AS responsible_name
         FROM callouts c LEFT JOIN users u ON u.id=c.responsible_id
         """;
@@ -33,6 +33,10 @@ public class JdbcCalloutRepository extends JdbcSupport implements CalloutReposit
     public List<String> replacementPositions(UUID id) { return db.queryForList("SELECT DISTINCT position FROM enrollments WHERE callout_id=? AND status='CONFIRMADA' AND cancellation_requested_at IS NOT NULL",String.class,id); }
     public String responsiblePhone(UUID id,UUID user) { return db.queryForList("SELECT p.phone FROM volunteer_profiles p JOIN enrollments e ON e.volunteer_id=p.user_id WHERE p.user_id=? AND e.callout_id=? AND e.position='RESPONSABLE' AND e.status='CONFIRMADA'",String.class,user,id).stream().filter(Objects::nonNull).findFirst().orElse(null); }
     public List<UUID> activeUsers() { return db.queryForList("SELECT id FROM users WHERE status='ACTIVO'",UUID.class); }
+    public boolean annualEligible(UUID user,int year) { return db.queryForObject("SELECT NOT u.graduated OR EXISTS(SELECT 1 FROM annual_enrollments a WHERE a.user_id=u.id AND a.year=?) FROM users u WHERE u.id=?",Boolean.class,year,user); }
+    public int nextCodeSequence(String category,int year) { return db.queryForObject("INSERT INTO service_code_counters(category,year,last_value) VALUES (?,?,1) ON CONFLICT(category,year) DO UPDATE SET last_value=service_code_counters.last_value+1 RETURNING last_value",Integer.class,category,year); }
+    public boolean codeReserved(String code) { return db.queryForObject("SELECT EXISTS(SELECT 1 FROM service_code_history WHERE lower(service_code)=lower(?)) OR EXISTS(SELECT 1 FROM callouts WHERE lower(service_code)=lower(?))",Boolean.class,code,code); }
+    public void generatedCode(UUID id,ServiceCode code) { db.update("UPDATE callouts SET service_category=?,code_year=?,code_sequence=?,code_created_at=? WHERE id=?",code.category(),code.createdAt().getYear(),code.sequence(),code.createdAt(),id); }
     public void create(UUID id,ServicesUseCases.Callout r,UUID creator,String code) {
         int total=r.totalVolunteers();
         db.update("""
