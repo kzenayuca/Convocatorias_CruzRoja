@@ -318,24 +318,51 @@ class BrowserTest {
 
     @Test
     void chiefCreatesCalloutDraft() {
-        // 1. Iniciar sesión como jefatura@demo.pe
-        //    (reutilizar el helper de login que ya existe en BrowserTest)
-        // 2. Abrir "Convocatorias"
-        // 3. Clic en "Nueva convocatoria"
-        // 4. Completar los campos obligatorios
+        // Inicializar: autenticar a jefatura y abrir el formulario.
+        var email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("jefatura@demo.pe");
+        var password=browser.findElement(By.cssSelector("input[type=password]"));
+        password.clear(); password.sendKeys("convocatorias");
+        click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        click("Convocatorias");
+        click("Nueva convocatoria");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("title")));
+
+        // Ejecutar: crear únicamente un borrador, sin publicar ni inscribir personas.
         var title = "Prueba Lab 6 " + System.currentTimeMillis();
-        //    Categoría: Externo (E)
-        //    Título: title
-        //    Descripción, tipo de servicio, área, lugar y requisitos
-        //    Total de voluntarios: 1
-        //    Mínimo de graduados, radioperadores y pilotos: 0
-        //    Inicio y fin: bloque libre (reutilizar la búsqueda de fecha libre)
-        //    Fecha límite: anterior al inicio
-        // 5. Clic en "Crear borrador"
-        // 6. Esperar a que aparezca la página de detalle
-        // 7. Verificar título y estado
-        //    assertTrue(texto de la página contiene title);
-        //    assertTrue(texto de la página contiene "Borrador");
+        new Select(browser.findElement(By.name("category"))).selectByValue("E");
+        new Select(browser.findElement(By.name("kind"))).selectByValue("SERVICIO");
+        fill("title",title);
+        fill("description","Servicio de prueba funcional del Laboratorio 6");
+        fill("serviceType","Apoyo comunitario");
+        fill("area","Voluntariado");
+        fill("location","Arequipa");
+        fill("requirements","Uniforme e identificación");
+        fill("totalVolunteers","1");
+        fill("graduateSlots","0");
+        fill("radioSlots","0");
+        fill("pilotSlots","0");
+        var start=LocalDateTime.now(java.time.ZoneId.of("America/Lima"))
+            .plusMonths(2).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        for(var entry:java.util.Map.of("start",start,"end",start.plusHours(3),"deadline",start.minusDays(1)).entrySet()) {
+            var input=browser.findElement(By.name(entry.getKey()));
+            ((JavascriptExecutor)browser).executeScript(
+                "arguments[0].value=arguments[1]; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",
+                input,entry.getValue().toString());
+        }
+        click("Crear borrador");
+
+        // Verificar el resultado visible, también después de recargar la página.
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("h1"),title));
+        var draftStatus=By.cssSelector(".service-hero .badge");
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(draftStatus,"Borrador"));
+        assertTrue(browser.getCurrentUrl().contains("/callouts/"));
+        assertEquals(title,browser.findElement(By.tagName("h1")).getText());
+        assertEquals("Borrador",browser.findElement(draftStatus).getText());
+        browser.navigate().refresh();
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("h1"),title));
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(draftStatus,"Borrador"));
         screenshot("lab6-convocatoria.png");
     }
 
