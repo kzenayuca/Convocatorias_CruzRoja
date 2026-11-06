@@ -933,4 +933,17 @@ class WorkflowTest {
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM attendance_records WHERE id=?",String.class,a));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='REVISION' AND recipient_id=?",Integer.class,"/services?review="+second,volunteer));
     }
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void attendancePrepareMarkIsIdempotent() {
+        var start = freeSlot();
+        var callout = service(start, start.plusHours(3));
+        var enrollment = fixtureEnrollment(callout, volunteer);
+        var repository = new pe.cruzroja.convocatorias.operations.infrastructure.JdbcAttendanceRepository(db);
+        repository.prepareMark(enrollment, volunteer, callout, chief);
+        repository.prepareMark(enrollment, volunteer, callout, chief);
+        assertEquals(1, db.queryForObject(
+            "SELECT count(*) FROM attendance_records WHERE enrollment_id=?",
+            Integer.class, enrollment));
+    }
 }

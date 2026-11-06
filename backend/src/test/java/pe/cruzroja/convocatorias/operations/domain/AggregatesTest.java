@@ -69,4 +69,16 @@ class AggregatesTest {
         assertDoesNotThrow(()->new HourTargets(new BigDecimal("120"),new BigDecimal("200")));
         assertThrows(IllegalArgumentException.class,()->new HourTargets(BigDecimal.ZERO,BigDecimal.TEN));
     }
+    @Test
+    void attendanceConfirmCreditsScheduledTwoHours() {
+        var start = LocalDateTime.of(2029, 12, 31, 9, 0);
+        var end = start.plusHours(2);
+        var attendance = new Attendance(
+            UUID.randomUUID(),
+            new ServiceWindow(start, end, start.minusDays(1)),
+            "PENDIENTE_REVISION", null, 2, false, false);
+        double hours = attendance.confirm(
+            start, end, null, false, end.plusHours(1));
+        assertEquals(2.0, hours, 0.0001);
+    }
 }
