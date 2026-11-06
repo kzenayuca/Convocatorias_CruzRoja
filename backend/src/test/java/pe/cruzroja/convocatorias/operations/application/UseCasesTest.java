@@ -1,6 +1,10 @@
 package pe.cruzroja.convocatorias.operations.application;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import java.time.*;
 import java.util.*;
@@ -60,5 +64,23 @@ class UseCasesTest {
         when(context.actor()).thenReturn(new Actor(chief,"JEFATURA",false)); var repo=mock(NoticeRepository.class); when(repo.recipients("TODOS")).thenReturn(List.of(user));
         new NoticesUseCases(repo,context,notices).publish(new Announcement("Aviso","Reunión de equipo","TODOS"));
         verify(repo).save(any(UUID.class),any(Announcement.class),eq(chief)); verify(notices).publish(eq(user),eq("COMUNICADO"),contains("Reunión"),eq("/notifications"));
+    }
+    @Test
+    void phoneUpdateUsesAuthenticatedActor() {
+        var repository = mock(VolunteerRepository.class);
+        var useCase = new AccountsUseCases(
+            repository,
+            mock(PasswordHasher.class),
+            mock(ServiceParticipation.class),
+            mock(GraduationEligibility.class),
+            mock(AnnualEnrollmentRepository.class),
+            context,
+            notices);
+
+        var phone = new AccountsUseCases.Phone("+51 999 111 222");
+        useCase.phone(phone);
+
+        verify(repository).phone(user, phone.phone());
+        verifyNoMoreInteractions(repository);
     }
 }
