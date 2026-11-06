@@ -187,8 +187,9 @@ class BrowserTest {
         wait.until(d -> d.findElement(By.tagName("main")).getText().contains(title) && d.findElement(By.tagName("main")).getText().contains("ACEPTADA"));
         browser.navigate().refresh(); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),title));
         click("Mi programación");
+        var dateInput=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[aria-label='Fecha de programación']")));
         var day=start.toLocalDate().toString();
-        ((JavascriptExecutor)browser).executeScript("const i=arguments[0]; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(i,arguments[1]); i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true}));",browser.findElement(By.cssSelector("input[type=date]")),day);
+        ((JavascriptExecutor)browser).executeScript("const i=arguments[0]; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(i,arguments[1]); i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true}));",dateInput,day);
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(".schedule-link"))); screenshot("programacion-browser.png");
         assertTrue(browser.findElements(By.xpath("//button[contains(text(),'Descargar PDF')]")).isEmpty());
         browser.findElement(By.cssSelector(".schedule-link")).click();

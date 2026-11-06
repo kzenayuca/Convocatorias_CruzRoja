@@ -69,4 +69,11 @@ class AggregatesTest {
         assertDoesNotThrow(()->new HourTargets(new BigDecimal("120"),new BigDecimal("200")));
         assertThrows(IllegalArgumentException.class,()->new HourTargets(BigDecimal.ZERO,BigDecimal.TEN));
     }
+
+    @Test void calloutCannotAdmitMemberWhenInclusiveTotalIsFull() {
+        var start = LocalDateTime.of(2030, 1, 10, 8, 0);
+        var members = List.of( new Callout.Member(UUID.randomUUID(), "SOCORRISTA", false), new Callout.Member(UUID.randomUUID(), "SOCORRISTA", false));
+        var callout = new Callout( UUID.randomUUID(), new ServiceWindow(start, start.plusHours(3), start.minusDays(1)), "SERVICIO", "ABIERTA", null, null, null, new TeamCapacity(2, 0, 0, 0), members);
+        assertFalse(callout.canAdmit(false, "FORMACION", null));
+    }
 }
