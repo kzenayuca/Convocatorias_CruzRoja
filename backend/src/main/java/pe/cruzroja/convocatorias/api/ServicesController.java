@@ -22,13 +22,14 @@ public class ServicesController {
     public record Callout(@NotBlank @Size(max=150) String title, @NotBlank @Size(max=5000) String description,
                           @NotNull LocalDateTime start, @NotNull LocalDateTime end, @NotNull LocalDateTime deadline,
                           @NotBlank @Size(max=200) String location, @NotBlank @Size(max=5000) String requirements,
-                          @NotBlank String level, @NotNull @Min(1) @Max(10000) Integer totalVolunteers,
+                           @NotNull @Min(1) @Max(10000) Integer totalVolunteers,
                           @Min(0) @Max(1) int radioSlots, @Min(0) @Max(1) int pilotSlots,
                           @NotBlank String kind, @NotBlank @Size(max=120) String area,
-                          @NotBlank @Size(max=200) String contact, @Size(max=40) String code,
+                           @Size(max=40) String code,
                           @NotBlank @Size(max=100) String serviceType,
                           @Min(0) @Max(10000) int graduateSlots) { }
     public record Responsible(UUID userId) { }
+    public record ResponsibleChange(@NotNull UUID expectedResponsibleId,UUID userId,@NotBlank @Size(max=2000) String reason) { }
     public record Status(@NotBlank String status) { }
     public record EnrollmentRequest(boolean requirementsAccepted, @NotBlank String position, UUID replacementFor) { }
     public record Assignment(@NotNull UUID userId,@NotBlank String position,boolean requirementsVerified) { }
@@ -37,7 +38,7 @@ public class ServicesController {
     public record Operation(@NotBlank String action, @NotBlank @Size(max=3000) String observations) { }
 
     private static final String CALLS="""
-        SELECT c.id,c.title,c.description,c.start_at,c.end_at,c.deadline,c.location,c.requirements,c.minimum_level,
+        SELECT c.id,c.title,c.description,c.start_at,c.end_at,c.deadline,c.location,c.requirements,
         c.status,c.kind,c.area,c.contact,c.responsible_id,c.created_by,c.opened_at,c.closed_at,c.observations,
         c.service_code,c.service_type,c.total_volunteers,c.socorrista_slots,c.graduate_slots,c.trainee_slots,c.radio_slots,c.pilot_slots,c.planned_hours,
         (c.team_photo IS NOT NULL) AS has_photo,c.photo_uploaded_at,
@@ -56,6 +57,12 @@ public class ServicesController {
             && workflow.qualified(c,actor().id(),p)).toList());
         var own=db.queryForList("SELECT id,status,position FROM enrollments WHERE callout_id=? AND volunteer_id=?",c.get("id"),actor().id());
         c.put("my_enrollment",own.isEmpty()?null:own.get(0));
+        boolean contactAllowed=chief() || !own.isEmpty() && "CONFIRMADA".equals(own.get(0).get("status"));
+        c.put("contact","Consultar a jefatura");
+        if(contactAllowed && c.get("responsible_id")!=null) {
+            var phones=db.queryForList("SELECT p.phone FROM volunteer_profiles p JOIN enrollments e ON e.volunteer_id=p.user_id WHERE p.user_id=? AND e.callout_id=? AND e.position='RESPONSABLE' AND e.status='CONFIRMADA'",c.get("responsible_id"),c.get("id"));
+            if(!phones.isEmpty() && phones.get(0).get("phone") instanceof String phone && !phone.isBlank()) c.put("contact",phone);
+        }
         c.put("coverage",workflow.complete(c)?"COMPLETA":"PENDIENTE");
         c.put("execution",text(c,"status").equals("CANCELADA")?"CANCELADO":c.get("closed_at")!=null || text(c,"status").equals("FINALIZADA")?"FINALIZADO":c.get("opened_at")!=null?"EN CURSO":"PROGRAMADO");
         return c;
@@ -87,7 +94,6 @@ public class ServicesController {
         valid(r.start().isAfter(now()) && r.end().isAfter(r.start()),"El servicio debe ser futuro y terminar después del inicio.");
         valid(Duration.between(r.start(),r.end()).compareTo(Duration.ofHours(48))<=0,"El servicio no puede durar más de 48 horas.");
         valid(r.deadline().isAfter(now()) && !r.deadline().isAfter(r.start()),"El cierre de inscripciones debe ser futuro y anterior o igual al inicio.");
-        valid(Set.of("BASICO","INTERMEDIO","AVANZADO").contains(r.level()),"Nivel no válido.");
         valid(Set.of("SERVICIO","INGRESO").contains(r.kind()),"Tipo no válido.");
         valid(r.kind().equals("SERVICIO") || r.radioSlots()==0 && r.pilotSlots()==0,"El ingreso no requiere radioperador ni piloto.");
         valid(r.graduateSlots()<=r.totalVolunteers(),"Los graduados requeridos deben estar dentro del total, no sumarse a él.");
@@ -106,8 +112,8 @@ public class ServicesController {
             INSERT INTO callouts(id,title,description,start_at,end_at,deadline,location,requirements,minimum_level,
             capacity,minimum_participants,status,kind,area,contact,created_by,service_code,service_type,
             socorrista_slots,radio_slots,pilot_slots,graduate_slots,total_volunteers) VALUES (?,?,?,?,?,?,?,?,?,?,?,'BORRADOR',?,?,?,?,?,?,?,?,?,?,?)
-            """,id,r.title(),r.description(),r.start(),r.end(),r.deadline(),r.location(),r.requirements(),r.level(),total,total,
-                r.kind(),r.area(),r.contact(),actor().id(),code,r.serviceType(),total-r.radioSlots()-r.pilotSlots(),r.radioSlots(),r.pilotSlots(),r.graduateSlots(),total);
+            """,id,r.title(),r.description(),r.start(),r.end(),r.deadline(),r.location(),r.requirements(),"BASICO",total,total,
+                r.kind(),r.area(),"",actor().id(),code,r.serviceType(),total-r.radioSlots()-r.pilotSlots(),r.radioSlots(),r.pilotSlots(),r.graduateSlots(),total);
         recordCode(id,code,r.serviceType());
         return Map.of("id",id);
     }
@@ -116,7 +122,7 @@ public class ServicesController {
         var c=workflow.locked(id); workflow.editPermission(c); validateCall(r);
         valid(Set.of("BORRADOR","ABIERTA","CERRADA").contains(c.get("status")) && c.get("opened_at")==null,"No se edita un servicio iniciado, cancelado o finalizado.");
         boolean participants=db.queryForObject("SELECT count(*) FROM enrollments WHERE callout_id=? AND status IN ('CONFIRMADA','PENDIENTE_REEMPLAZO')",Integer.class,id)>0;
-        if(participants) valid(r.kind().equals(c.get("kind")) && r.level().equals(c.get("minimum_level")),"Con participantes no se cambia el tipo ni el nivel mínimo.");
+        if(participants) valid(r.kind().equals(c.get("kind")),"Con participantes no se cambia el tipo de convocatoria.");
         if(!r.start().equals(time(c,"start_at")) || !r.end().equals(time(c,"end_at"))) {
             var proposed=new HashMap<>(c); proposed.put("start_at",java.sql.Timestamp.valueOf(r.start())); proposed.put("end_at",java.sql.Timestamp.valueOf(r.end()));
             for(var e:db.queryForList("SELECT volunteer_id FROM enrollments WHERE callout_id=? AND status='CONFIRMADA' ORDER BY volunteer_id",id)) {
@@ -131,9 +137,9 @@ public class ServicesController {
         valid(c.get("service_code")==null || code!=null,"No retires un código ya asignado.");
         int total=r.totalVolunteers();
         db.update("""
-            UPDATE callouts SET title=?,description=?,start_at=?,end_at=?,deadline=?,location=?,requirements=?,minimum_level=?,
-            capacity=?,minimum_participants=?,kind=?,area=?,contact=?,service_code=?,service_type=?,socorrista_slots=?,radio_slots=?,pilot_slots=?,graduate_slots=?,trainee_slots=0,total_volunteers=? WHERE id=?
-            """,r.title(),r.description(),r.start(),r.end(),r.deadline(),r.location(),r.requirements(),r.level(),total,total,r.kind(),r.area(),r.contact(),code,r.serviceType(),total-r.radioSlots()-r.pilotSlots(),r.radioSlots(),r.pilotSlots(),r.graduateSlots(),total,id);
+            UPDATE callouts SET title=?,description=?,start_at=?,end_at=?,deadline=?,location=?,requirements=?,
+            capacity=?,minimum_participants=?,kind=?,area=?,service_code=?,service_type=?,socorrista_slots=?,radio_slots=?,pilot_slots=?,graduate_slots=?,trainee_slots=0,total_volunteers=? WHERE id=?
+            """,r.title(),r.description(),r.start(),r.end(),r.deadline(),r.location(),r.requirements(),total,total,r.kind(),r.area(),code,r.serviceType(),total-r.radioSlots()-r.pilotSlots(),r.radioSlots(),r.pilotSlots(),r.graduateSlots(),total,id);
         if(!Objects.equals(code,c.get("service_code"))) recordCode(id,code,r.serviceType());
         workflow.synchronize(workflow.locked(id)); workflow.announce(c,"Datos actualizados: revisa horario, lugar y requisitos. "+r.location()+" · "+r.start());
     }
@@ -170,8 +176,8 @@ public class ServicesController {
         var c=one(db,"SELECT "+CalloutWorkflow.FIELDS+" FROM callouts WHERE id=?",id);
         if(!Set.of("ABIERTA","CERRADA").contains(c.get("status")) || c.get("opened_at")!=null || !time(c,"start_at").isAfter(now()) || !time(c,"deadline").isAfter(now())) return List.of();
         return db.queryForList("""
-            SELECT u.id,u.name,u.surnames,u.graduated,p.training_level FROM users u
-            JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.status='ACTIVO'
+            SELECT u.id,u.name,u.surnames,u.graduated FROM users u
+            JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.status='ACTIVO' AND u.role='VOLUNTARIO'
             AND NOT EXISTS(SELECT 1 FROM enrollments e WHERE e.callout_id=? AND e.volunteer_id=u.id AND e.status NOT IN ('PENDIENTE','EXPIRADA'))
             ORDER BY u.name,u.surnames,u.id
             """,id).stream().filter(u -> workflow.qualified(c,id(u,"id"),position) && !workflow.overlap(c,id(u,"id"))
@@ -186,7 +192,7 @@ public class ServicesController {
         valid(r.replacementFor()!=null || time(c,"deadline").isAfter(now()),"Terminó el plazo de inscripción.");
         // Un perfil se bloquea para evitar que dos servicios simultáneos acepten al mismo voluntario.
         one(db,"SELECT user_id FROM volunteer_profiles WHERE user_id=? FOR UPDATE",user);
-        valid(workflow.qualified(c,user,r.position()),"La persona no está activa o no cumple el nivel, la graduación o la habilitación del puesto.");
+        valid(workflow.qualified(c,user,r.position()),"La persona no es voluntaria activa o no cumple la graduación o la habilitación del puesto.");
         valid(!workflow.overlap(c,user),"La persona tiene otro servicio en ese horario.");
         var previous=db.queryForList("SELECT * FROM enrollments WHERE callout_id=? AND volunteer_id=? FOR UPDATE",id,user);
         valid(previous.isEmpty() || Set.of("PENDIENTE","EXPIRADA").contains(previous.get(0).get("status")),"Ya tienes una inscripción o una resolución en esta convocatoria.");
@@ -224,7 +230,7 @@ public class ServicesController {
     @GetMapping("/callouts/{id}/enrollments") public List<Map<String,Object>> applicants(@PathVariable UUID id) {
         maintenance.refresh(); var c=one(db,"SELECT * FROM callouts WHERE id=?",id); workflow.teamPermission(c);
         String filter=chief() || workflow.canEdit(c)?"":" AND e.status IN ('CONFIRMADA','PENDIENTE_REEMPLAZO')";
-        return db.queryForList("SELECT e.*,u.name,u.surnames,p.training_level FROM enrollments e JOIN users u ON u.id=e.volunteer_id LEFT JOIN volunteer_profiles p ON p.user_id=u.id WHERE e.callout_id=?"+filter+" ORDER BY e.created_at,e.id",id);
+        return db.queryForList("SELECT e.*,u.name,u.surnames FROM enrollments e JOIN users u ON u.id=e.volunteer_id WHERE e.callout_id=?"+filter+" ORDER BY e.created_at,e.id",id);
     }
     @PostMapping("/enrollments/{id}/review") @Transactional
     public void review(@PathVariable UUID id,@Valid @RequestBody Review r) {
@@ -267,7 +273,8 @@ public class ServicesController {
     @PostMapping("/callouts/{id}/photo") @Transactional
     public void photo(@PathVariable UUID id,@RequestParam org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
         var c=workflow.locked(id); require(canUploadPhoto(c),"Solo jefatura o el responsable graduado asignado pueden subir fotos.");
-        byte[] bytes=file.getBytes(); valid(bytes.length>8 && bytes.length<=50*1024*1024,"La foto debe pesar como máximo 50 MB.");
+        valid(file.getSize()<=10*1024*1024,"La foto debe pesar como máximo 10 MB.");
+        byte[] bytes=file.getBytes(); valid(bytes.length>8,"La foto está vacía o no es válida.");
         boolean png=bytes[0]==(byte)137 && bytes[1]==80 && bytes[2]==78 && bytes[3]==71;
         boolean jpg=bytes[0]==(byte)255 && bytes[1]==(byte)216 && bytes[2]==(byte)255;
         valid(png || jpg,"Solo se admiten fotos JPG o PNG válidas.");
@@ -281,6 +288,7 @@ public class ServicesController {
         db.update("UPDATE callouts SET team_photo=?,photo_type=?,photo_uploaded_by=?,photo_uploaded_at=? WHERE id=?",bytes,png?"image/png":"image/jpeg",actor().id(),now(),id);
     }
     @GetMapping("/callouts/{id}/photo") public org.springframework.http.ResponseEntity<byte[]> photo(@PathVariable UUID id) {
+        detail(id);
         var c=one(db,"SELECT * FROM callouts WHERE id=?",id);
         if(c.get("team_photo")==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"No hay foto del equipo.");
         return org.springframework.http.ResponseEntity.ok().header("Cache-Control","no-store").contentType(org.springframework.http.MediaType.parseMediaType(text(c,"photo_type"))).body((byte[])c.get("team_photo"));
@@ -290,29 +298,48 @@ public class ServicesController {
         require(chief(),"Solo jefatura consulta el historial de códigos.");
         return db.queryForList("SELECT h.*,u.name AS assigned_name FROM service_code_history h LEFT JOIN users u ON u.id=h.assigned_by ORDER BY h.assigned_at DESC,h.id DESC LIMIT 100");
     }
-    @GetMapping("/responsible-candidates") public List<Map<String,Object>> responsibleCandidates() {
+    @GetMapping("/callouts/{id}/responsible-candidates") public List<Map<String,Object>> responsibleCandidates(@PathVariable UUID id) {
         require(chief(),"Solo jefatura asigna responsables.");
-        return db.queryForList("SELECT id,name,surnames FROM users WHERE status='ACTIVO' AND role='VOLUNTARIO' AND graduated=true ORDER BY name");
+        var c=one(db,"SELECT "+CalloutWorkflow.FIELDS+" FROM callouts WHERE id=?",id);
+        return db.queryForList("SELECT u.id,u.name,u.surnames FROM users u JOIN enrollments e ON e.volunteer_id=u.id WHERE u.status='ACTIVO' AND u.role='VOLUNTARIO' AND u.graduated=true AND e.callout_id=? AND e.status='CONFIRMADA' AND e.position IN ('SOCORRISTA','GRADUADO','FORMACION') AND e.cancellation_requested_at IS NULL ORDER BY u.name,u.surnames",id).stream().filter(u -> !workflow.overlap(c,id(u,"id"))).toList();
     }
     @PutMapping("/callouts/{id}/responsible") @Transactional
     public void responsible(@PathVariable UUID id,@RequestBody Responsible r) {
-        require(chief(),"Solo jefatura asigna responsables."); var c=workflow.locked(id); ledger.ensureOpen(c);
+        require(chief(),"Solo jefatura asigna responsables."); var c=workflow.locked(id);
+        valid(c.get("responsible_id")==null && r.userId()!=null,"Ya hay responsable. Usa Cambiar o retirar responsable e indica un motivo.");
+        setResponsible(c,r.userId(),"Asignación inicial por jefatura");
+    }
+    @PostMapping("/callouts/{id}/responsible/change") @Transactional
+    public void changeResponsible(@PathVariable UUID id,@Valid @RequestBody ResponsibleChange r) {
+        require(chief(),"Solo jefatura cambia o retira responsables."); var c=workflow.locked(id);
+        valid(Objects.equals(c.get("responsible_id"),r.expectedResponsibleId()),"El responsable cambió. Actualiza la pantalla antes de continuar.");
+        valid(!Objects.equals(r.userId(),r.expectedResponsibleId()),"Selecciona otra persona o retira la responsabilidad.");
+        setResponsible(c,r.userId(),r.reason());
+    }
+    @GetMapping("/callouts/{id}/responsible/history") public List<Map<String,Object>> responsibleHistory(@PathVariable UUID id) {
+        require(chief(),"Solo jefatura consulta el historial de responsables.");
+        return db.queryForList("SELECT h.*,u.name AS changed_name,o.name AS previous_name,n.name AS next_name FROM responsible_history h JOIN users u ON u.id=h.changed_by LEFT JOIN users o ON o.id=h.previous_user_id LEFT JOIN users n ON n.id=h.next_user_id WHERE h.callout_id=? ORDER BY h.changed_at DESC,h.id",id);
+    }
+    private void setResponsible(Map<String,Object> c,UUID user,String reason) {
+        UUID id=id(c,"id"); ledger.ensureOpen(c);
+        Responsible r=new Responsible(user);
         valid(r.userId()==null || text(c,"kind").equals("SERVICIO"),"El ingreso no requiere un responsable de servicio.");
         valid(time(c,"start_at").isAfter(now()) && c.get("opened_at")==null && !Set.of("CANCELADA","FINALIZADA").contains(c.get("status")),"Asigna al responsable antes del servicio.");
-        if(Objects.equals(c.get("responsible_id"),r.userId())) return;
         if(r.userId()!=null) {
             one(db,"SELECT user_id FROM volunteer_profiles WHERE user_id=? FOR UPDATE",r.userId());
-            valid(workflow.qualified(c,r.userId(),"RESPONSABLE"),"El responsable debe ser un voluntario graduado activo y cumplir el nivel mínimo.");
+            valid(workflow.qualified(c,r.userId(),"RESPONSABLE"),"El responsable debe ser un voluntario graduado activo.");
+            valid(db.queryForObject("SELECT count(*) FROM enrollments WHERE callout_id=? AND volunteer_id=? AND status='CONFIRMADA' AND position IN ('SOCORRISTA','GRADUADO','FORMACION')",Integer.class,id,r.userId())==1,"Primero inscribe a la persona como voluntario general en esta convocatoria.");
             valid(!workflow.overlap(c,r.userId()),"El responsable tiene otro servicio en ese horario.");
             valid(db.queryForObject("SELECT count(*) FROM enrollments WHERE callout_id=? AND volunteer_id=? AND NOT(position='RESPONSABLE' AND status='CANCELADA') AND NOT(position IN ('SOCORRISTA','GRADUADO','FORMACION') AND status='CONFIRMADA')",Integer.class,id,r.userId())==0,"No se puede convertir un piloto, radioperador o una inscripción resuelta en responsable.");
         }
-        db.update("UPDATE enrollments SET status='CANCELADA',comment='Responsabilidad reasignada por jefatura' WHERE callout_id=? AND position='RESPONSABLE' AND status='CONFIRMADA'",id);
+        db.update("UPDATE enrollments SET position='SOCORRISTA',comment='Responsabilidad retirada; conserva su inscripción como voluntario' WHERE callout_id=? AND position='RESPONSABLE' AND status='CONFIRMADA'",id);
         if(r.userId()!=null) {
             valid(workflow.canAdmit(c,r.userId(),"RESPONSABLE",r.userId()),"El responsable debe caber dentro del total sin ocupar el espacio reservado para piloto o radioperador.");
             valid(db.queryForObject("SELECT count(*) FROM enrollments e WHERE e.callout_id=? AND e.volunteer_id=? AND (e.cancellation_requested_at IS NOT NULL OR EXISTS(SELECT 1 FROM enrollments pending WHERE pending.replacement_for=e.id AND pending.status='PENDIENTE_REEMPLAZO'))",Integer.class,id,r.userId())==0,"Resuelve primero la solicitud de reemplazo de esta persona.");
             db.update("INSERT INTO enrollments(id,volunteer_id,callout_id,status,position,reviewed_at,assigned_by,assigned_at,requirements_accepted) VALUES (?,?,?,'CONFIRMADA','RESPONSABLE',?,?,?,true) ON CONFLICT(volunteer_id,callout_id) DO UPDATE SET status='CONFIRMADA',position='RESPONSABLE',reviewed_at=EXCLUDED.reviewed_at,assigned_by=EXCLUDED.assigned_by,assigned_at=EXCLUDED.assigned_at,requirements_accepted=true,comment='Responsabilidad reasignada por jefatura'",UUID.randomUUID(),r.userId(),id,now(),actor().id(),now());
         }
         db.update("UPDATE callouts SET responsible_id=? WHERE id=?",r.userId(),id);
+        db.update("INSERT INTO responsible_history(id,callout_id,previous_user_id,next_user_id,changed_by,changed_at,reason) VALUES (?,?,?,?,?,?,?)",UUID.randomUUID(),id,c.get("responsible_id"),r.userId(),actor().id(),now(),reason);
         workflow.synchronize(workflow.locked(id));
         workflow.announce(workflow.locked(id),"Responsable actualizado por jefatura.");
     }
@@ -324,6 +351,7 @@ public class ServicesController {
         return rows.stream().map(this::presentation).toList();
     }
     @GetMapping("/schedule/pdf") public org.springframework.http.ResponseEntity<byte[]> schedulePdf(@RequestParam java.time.LocalDate date) throws java.io.IOException {
+        require(chief(),"Solo jefatura puede descargar la programación en PDF.");
         var lines=new ArrayList<String>();
         for(var c:schedule(date)) {
             lines.add(Objects.toString(c.get("service_code"),"Sin código")+" - "+c.get("title"));

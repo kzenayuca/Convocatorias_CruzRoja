@@ -86,11 +86,16 @@ class BrowserTest {
     @Test void chiefSetsConditionTargetsAndDirectlyEnrollsAnEligibleVolunteer() {
         var email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
         email.clear(); email.sendKeys("jefatura@demo.pe"); click("Iniciar sesión");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome"))); click("Administración");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        assertTrue(browser.findElements(By.linkText("Mis servicios")).isEmpty());
+        click("Mi perfil"); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Administración institucional"));
+        assertTrue(browser.findElements(By.xpath("//h2[text()='Mi meta de horas']")).isEmpty());
+        click("Administración");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("trainingHours")));
         fill("trainingHours","120"); fill("graduateHours","200"); click("Guardar metas generales");
         wait.until(d -> d.findElement(By.tagName("main")).getText().contains("120 h") && d.findElement(By.tagName("main")).getText().contains("200 h"));
         click("Usuarios"); wait.until(d -> !d.findElements(By.cssSelector("select[name=role] option")).isEmpty());
+        assertTrue(browser.findElements(By.name("level")).isEmpty());
         assertTrue(browser.findElements(By.cssSelector("select[name=role] option")).stream().allMatch(o -> java.util.Set.of("VOLUNTARIO","JEFATURA").contains(o.getAttribute("value"))));
         var start=LocalDateTime.parse((String)((JavascriptExecutor)browser).executeAsyncScript("""
             const done=arguments[arguments.length-1];
@@ -111,6 +116,8 @@ class BrowserTest {
         browser.get(System.getProperty("e2e.url")+"/callouts/"+id);
         wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//summary[text()='Inscribir directamente · jefatura']"))).click();
         wait.until(d -> d.findElements(By.cssSelector("select[name=assignmentUser] option")).size()>1);
+        fill("assignmentSearch","Ana");
+        assertEquals(2,browser.findElements(By.cssSelector("select[name=assignmentUser] option")).size());
         new Select(browser.findElement(By.name("assignmentUser"))).selectByValue("00000000-0000-0000-0000-000000000001");
         var submit=browser.findElement(By.xpath("//button[text()='Confirmar inscripción directa']")); assertFalse(submit.isEnabled());
         var verified=browser.findElement(By.name("assignmentVerified")); ((JavascriptExecutor)browser).executeScript("arguments[0].scrollIntoView({block:'center'})",verified); verified.click();
@@ -130,7 +137,8 @@ class BrowserTest {
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome"))); click("Convocatorias"); click("Nueva convocatoria");
         String code="UI-"+System.nanoTime(), title="Servicio Selenium "+System.nanoTime();
         fill("code",code); fill("title",title); fill("description","Equipo para el servicio comunitario");
-        fill("serviceType","Guardia"); fill("location","Arequipa"); fill("contact","Responsable de guardia"); fill("requirements","Trabajo en equipo");
+        fill("serviceType","Guardia"); fill("location","Arequipa"); fill("requirements","Curso de herramientas y trabajo en equipo");
+        assertTrue(browser.findElements(By.name("level")).isEmpty());
         fill("totalVolunteers","1");
         assertTrue(browser.findElements(By.name("traineeSlots")).isEmpty());
         // Elige un horario realmente libre para poder repetir la prueba sin borrar datos de prueba.
@@ -163,8 +171,59 @@ class BrowserTest {
         var day=start.toLocalDate().toString();
         ((JavascriptExecutor)browser).executeScript("const i=arguments[0]; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(i,arguments[1]); i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true}));",browser.findElement(By.cssSelector("input[type=date]")),day);
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(".schedule-link"))); screenshot("programacion-browser.png");
+        assertTrue(browser.findElements(By.xpath("//button[contains(text(),'Descargar PDF')]")).isEmpty());
         browser.findElement(By.cssSelector(".schedule-link")).click();
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("h1"),title));
         assertTrue(browser.findElements(By.xpath("//summary[text()='Gestionar convocatoria']")).isEmpty());
+    }
+    @Test void responsibilityIsAssignedOnceAndRevokedThroughAnExplicitAuditedAction() {
+        var email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("jefatura@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        var start=LocalDateTime.parse((String)((JavascriptExecutor)browser).executeAsyncScript("""
+            const done=arguments[arguments.length-1];
+            fetch('/api/v1/callouts').then(r=>r.json()).then(rows=>{
+              const start=new Date(); start.setUTCFullYear(start.getUTCFullYear()+4); start.setUTCHours(14,0,0,0);
+              while(rows.some(c=>Date.parse(c.start_at)<start.getTime()+3*3600000 && Date.parse(c.end_at)>start.getTime())) start.setUTCDate(start.getUTCDate()+1);
+              done(new Date(start.getTime()-5*3600000).toISOString().slice(0,16));
+            }).catch(e=>done(e.message));
+            """));
+        var body=new java.util.LinkedHashMap<String,Object>();
+        body.put("title","Responsable Selenium "+System.nanoTime()); body.put("description","Control de permisos por convocatoria");
+        body.put("start",start.toString()); body.put("end",start.plusHours(3).toString()); body.put("deadline",start.minusDays(1).toString());
+        body.put("location","Arequipa"); body.put("requirements","Curso afín y manejo de herramientas"); body.put("totalVolunteers",2);
+        body.put("graduateSlots",0); body.put("radioSlots",0); body.put("pilotSlots",0); body.put("kind","SERVICIO");
+        body.put("area","Salud"); body.put("code","RESP-"+System.nanoTime()); body.put("serviceType","Guardia");
+        String id=String.valueOf(((java.util.Map<?,?>)request("/callouts","POST",body).get("data")).get("id"));
+        String maria="00000000-0000-0000-0000-000000000004";
+        request("/callouts/"+id+"/status","POST",java.util.Map.of("status","ABIERTA"));
+        request("/callouts/"+id+"/assignments","POST",java.util.Map.of("userId",maria,"position","SOCORRISTA","requirementsVerified",true));
+        browser.get(System.getProperty("e2e.url")+"/callouts/"+id);
+        wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//summary[text()='Asignar responsable · jefatura']"))).click();
+        wait.until(d -> d.findElements(By.cssSelector("select[name=userId] option")).size()>1);
+        new Select(browser.findElement(By.name("userId"))).selectByValue(maria); click("Asignar responsable");
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Ya hay un responsable"));
+        assertTrue(browser.findElements(By.xpath("//button[text()='Asignar responsable']")).isEmpty());
+        click("Salir"); email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("maria@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        browser.get(System.getProperty("e2e.url")+"/callouts/"+id);
+        wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[text()='Adjuntar foto']"))).click();
+        assertTrue(browser.findElement(By.tagName("main")).getText().contains("hasta 10 MB"));
+        assertFalse(browser.findElements(By.xpath("//summary[text()='Revisión de asistencia']")).isEmpty());
+        click("Salir"); email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("jefatura@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        browser.get(System.getProperty("e2e.url")+"/callouts/"+id);
+        wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//summary[text()='Responsable asignado · jefatura']"))).click();
+        click("Cambiar o retirar responsable"); fill("reason","Retiro explícito de responsabilidad, conserva su inscripción"); click("Confirmar cambio auditado");
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Asignar responsable · jefatura"));
+        click("Salir"); email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("maria@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        browser.get(System.getProperty("e2e.url")+"/callouts/"+id);
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Tu inscripción: ACEPTADA"));
+        assertTrue(browser.findElements(By.xpath("//button[text()='Adjuntar foto']")).isEmpty());
+        assertTrue(browser.findElements(By.xpath("//summary[text()='Revisión de asistencia']")).isEmpty());
     }
 }

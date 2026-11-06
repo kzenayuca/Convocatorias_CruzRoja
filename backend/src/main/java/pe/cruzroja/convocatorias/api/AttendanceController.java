@@ -33,7 +33,7 @@ public class AttendanceController {
     }
     private List<Map<String,Object>> records(String where,Object... args) {
         return db.queryForList("""
-            SELECT a.*,c.title,c.start_at,c.end_at,c.status AS callout_status,u.name,
+            SELECT a.*,c.title,c.start_at,c.end_at,c.status AS callout_status,u.name,u.role AS volunteer_role,
             j.status AS justification_status,j.kind AS justification_kind,j.reason,j.late,
             (SELECT count(*) FROM enrollments r WHERE r.replacement_for=a.enrollment_id AND r.status='CONFIRMADA'
                 AND r.reviewed_at<=c.start_at) AS replacements
@@ -102,9 +102,9 @@ public class AttendanceController {
 
     @PostMapping("/attendance/{id}/justifications") @Transactional
     public void justify(@PathVariable UUID id,@Valid @RequestBody Reason r) {
+        require(!chief(),"Jefatura no está sujeta a penalizaciones ni necesita justificarse.");
         var initial=one(db,"SELECT * FROM attendance_records WHERE id=?",id);
         var c=services.locked(id(initial,"callout_id"));
-        ledger.ensureOpen(c);
         var a=one(db,"SELECT * FROM attendance_records WHERE id=? FOR UPDATE",id);
         require(actor().id().equals(a.get("volunteer_id")),"Solo puedes justificar tu asistencia.");
         valid(!time(c,"end_at").isAfter(now()),"Presenta la justificación después del servicio.");
@@ -115,18 +115,27 @@ public class AttendanceController {
     }
 
     @GetMapping("/justifications") public List<Map<String,Object>> justifications() {
-        String sql="SELECT j.*,u.name,c.title,c.start_at,c.end_at,a.enrollment_id,(SELECT count(*) FROM enrollments r WHERE r.replacement_for=a.enrollment_id AND r.status='CONFIRMADA' AND r.reviewed_at<=c.start_at) AS replacements FROM justifications j JOIN attendance_records a ON a.id=j.absence_id JOIN callouts c ON c.id=a.callout_id JOIN users u ON u.id=j.volunteer_id";
-        return chief()?db.queryForList(sql+" ORDER BY j.submitted_at DESC"):db.queryForList(sql+" WHERE j.volunteer_id=? ORDER BY j.submitted_at DESC",actor().id());
+        String sql="SELECT j.*,u.name,u.surnames,c.title,c.start_at,c.end_at,a.enrollment_id,reviewer.name AS resolved_name,(SELECT count(*) FROM enrollments r WHERE r.replacement_for=a.enrollment_id AND r.status='CONFIRMADA' AND r.reviewed_at<=c.start_at) AS replacements FROM justifications j JOIN attendance_records a ON a.id=j.absence_id JOIN callouts c ON c.id=a.callout_id JOIN users u ON u.id=j.volunteer_id LEFT JOIN users reviewer ON reviewer.id=j.resolved_by";
+        var rows=chief()?db.queryForList(sql+" ORDER BY j.submitted_at DESC"):db.queryForList(sql+" WHERE j.volunteer_id=? ORDER BY j.submitted_at DESC",actor().id());
+        for(var j:rows) {
+            j.put("month_closed",ledger.closed(YearMonth.from(time(j,"start_at"))));
+            j.put("history",db.queryForList("SELECT r.*,u.name AS resolved_name FROM justification_resolutions r JOIN users u ON u.id=r.resolved_by WHERE r.justification_id=? ORDER BY r.resolved_at,r.id",j.get("id")));
+        }
+        return rows;
     }
     @PostMapping("/justifications/{id}/resolve") @Transactional
     public void resolve(@PathVariable UUID id,@Valid @RequestBody Resolution r) {
         require(chief(),"Solo jefatura resuelve justificaciones.");
         var j=one(db,"SELECT j.*,a.enrollment_id,a.callout_id FROM justifications j JOIN attendance_records a ON a.id=j.absence_id WHERE j.id=?",id);
         var c=services.locked(id(j,"callout_id"));
-        ledger.ensureOpen(c);
-        one(db,"SELECT id FROM justifications WHERE id=? FOR UPDATE",id);
-        if(r.approved() && text(j,"kind").equals("AUSENCIA")) valid(db.queryForObject("SELECT count(*) FROM enrollments WHERE replacement_for=? AND status='CONFIRMADA' AND reviewed_at<=?",Integer.class,j.get("enrollment_id"),time(c,"start_at"))>0,"Una inasistencia requiere reemplazo aceptado antes del inicio. La tardanza no requiere reemplazo.");
-        db.update("UPDATE justifications SET status=?,resolution_comment=? WHERE id=?",r.approved()?"APROBADA":"RECHAZADA",r.comment(),id);
+        j=one(db,"SELECT * FROM justifications WHERE id=? FOR UPDATE",id);
+        var a=one(db,"SELECT a.*,c.start_at,c.end_at,c.status AS callout_status,u.role AS volunteer_role,j.status AS justification_status,j.kind AS justification_kind FROM attendance_records a JOIN callouts c ON c.id=a.callout_id JOIN users u ON u.id=a.volunteer_id JOIN justifications j ON j.absence_id=a.id WHERE j.id=? FOR UPDATE OF a",id);
+        double before=rounded(deduction(a)); String status=r.approved()?"APROBADA":"RECHAZADA";
+        a.put("justification_status",status); double after=rounded(deduction(a));
+        UUID resolution=UUID.randomUUID();
+        db.update("INSERT INTO justification_resolutions(id,justification_id,previous_status,status,resolved_by,resolved_at,comment,deduction_before,deduction_after) VALUES (?,?,?,?,?,?,?,?,?)",resolution,id,j.get("status"),status,actor().id(),now(),r.comment(),before,after);
+        db.update("UPDATE justifications SET status=?,resolution_comment=?,resolved_by=?,resolved_at=? WHERE id=?",status,r.comment(),actor().id(),now(),id);
+        if(ledger.closed(c) && before!=after) db.update("INSERT INTO monthly_report_adjustments(id,month,user_id,resolution_id,deduction_delta,created_at) VALUES (?,?,?,?,?,?)",UUID.randomUUID(),YearMonth.from(time(c,"start_at")).atDay(1),j.get("volunteer_id"),resolution,rounded(after-before),now());
         Store.notify(db,id(j,"volunteer_id"),"JUSTIFICACION","Justificación "+(r.approved()?"aprobada":"rechazada")+": "+r.comment(),"/justifications");
     }
 
@@ -134,10 +143,18 @@ public class AttendanceController {
         maintenance.refresh(); return summary(actor().id(),month==null?YearMonth.from(now()):YearMonth.parse(month));
     }
     Map<String,Object> summary(UUID user, YearMonth month) {
+        boolean exempt="JEFATURA".equals(db.queryForObject("SELECT role FROM users WHERE id=?",String.class,user));
         if(ledger.closed(month)) {
             var rows=db.queryForList("SELECT earned,deductions,hours,pending FROM monthly_report_rows WHERE month=? AND user_id=?",month.atDay(1),user);
             var result=new LinkedHashMap<String,Object>();
             result.putAll(rows.isEmpty()?Map.of("earned",0,"deductions",0,"hours",0,"pending",0):rows.get(0));
+            double original=((Number)result.get("hours")).doubleValue();
+            double originalDeduction=((Number)result.get("deductions")).doubleValue();
+            double adjustment=db.queryForObject("SELECT COALESCE(sum(deduction_delta),0) FROM monthly_report_adjustments WHERE month=? AND user_id=?",Double.class,month.atDay(1),user);
+            result.put("original_hours",original); result.put("original_deductions",originalDeduction);
+            result.put("adjustment",exempt?originalDeduction:rounded(-adjustment));
+            result.put("deductions",exempt?0:rounded(originalDeduction+adjustment));
+            result.put("hours",rounded(original+(exempt?originalDeduction:-adjustment)));
             result.put("month",month.toString()); result.put("closed",true); return result;
         }
         var sql="SELECT a.*,c.start_at,c.end_at,c.status AS callout_status,j.status AS justification_status,j.kind AS justification_kind FROM attendance_records a JOIN callouts c ON c.id=a.callout_id LEFT JOIN justifications j ON j.absence_id=a.id WHERE a.volunteer_id=? AND c.start_at>=? AND c.start_at<? AND c.status<>'CANCELADA'";
@@ -147,7 +164,7 @@ public class AttendanceController {
         double earned=0,deductions=0; int pending=0;
         for(var a:rows) {
             if(text(a,"status").equals("CONFIRMADA") && a.get("approved_hours")!=null) earned+=((Number)a.get("approved_hours")).doubleValue();
-            deductions+=deduction(a);
+            if(!exempt) deductions+=deduction(a);
             if(Set.of("PENDIENTE_REVISION","INCOMPLETA").contains(text(a,"status"))) pending++;
         }
         return Map.of("month",month.toString(),"earned",rounded(earned),"deductions",rounded(deductions),"hours",rounded(earned-deductions),"pending",pending);
@@ -155,11 +172,12 @@ public class AttendanceController {
     @GetMapping("/reports") public List<Map<String,Object>> report(@RequestParam String month) {
         require(chief(),"Solo jefatura consulta el reporte general."); maintenance.refresh();
         var parsed=YearMonth.parse(month);
-        if(ledger.closed(parsed)) return db.queryForList("SELECT user_id AS id,name,earned,deductions,hours,pending FROM monthly_report_rows WHERE month=? ORDER BY name",parsed.atDay(1));
+        if(ledger.closed(parsed)) return db.queryForList("SELECT user_id AS id,name FROM monthly_report_rows WHERE month=? ORDER BY name",parsed.atDay(1)).stream().map(u -> { var row=new LinkedHashMap<String,Object>(u); row.putAll(summary(id(u,"id"),parsed)); return (Map<String,Object>)row; }).toList();
         var users=db.queryForList("SELECT id,name || ' ' || surnames AS name FROM users ORDER BY name");
         return users.stream().map(u -> { var row=new LinkedHashMap<String,Object>(u); row.putAll(summary(id(u,"id"),parsed)); return (Map<String,Object>)row; }).toList();
     }
     @GetMapping("/attendance/progress") public Object progress() {
+        if(chief()) return Map.of("applicable",false,"condition","JEFATURA","months",List.of());
         maintenance.refresh(); double earned=0,deductions=0; int pending=0;
         var months=db.queryForList("""
             SELECT DISTINCT date_trunc('month',c.start_at)::date AS month FROM attendance_records a JOIN callouts c ON c.id=a.callout_id WHERE a.volunteer_id=?
@@ -170,7 +188,7 @@ public class AttendanceController {
             var row=summary(actor().id(),YearMonth.from(((java.sql.Date)m.get("month")).toLocalDate())); details.add(row);
             earned+=((Number)row.get("earned")).doubleValue(); deductions+=((Number)row.get("deductions")).doubleValue(); pending+=((Number)row.get("pending")).intValue();
         }
-        return Map.of("progress",graduation.progress(rounded(earned),rounded(deductions),pending,actor().graduated()),
+        return Map.of("applicable",true,"progress",graduation.progress(rounded(earned),rounded(deductions),pending,actor().graduated()),
             "condition",actor().graduated()?"GRADUADO":"FORMACION","target_period","ACUMULADO","months",details);
     }
 
@@ -201,11 +219,15 @@ public class AttendanceController {
     }
     @GetMapping("/reports/pdf") public org.springframework.http.ResponseEntity<byte[]> reportPdf(@RequestParam String month) throws java.io.IOException {
         var lines=new ArrayList<String>();
-        for(var r:report(month)) lines.add(r.get("name")+" | Reconocidas: "+r.get("earned")+" h | Deducciones: "+r.get("deductions")+" h | Saldo: "+r.get("hours")+" h | Pendientes: "+r.get("pending"));
+        for(var r:report(month)) {
+            lines.add(r.get("name")+" | Reconocidas: "+r.get("earned")+" h | Deducciones: "+r.get("deductions")+" h | Saldo: "+r.get("hours")+" h | Pendientes: "+r.get("pending"));
+            if(Boolean.TRUE.equals(r.get("closed"))) lines.add("Cierre original: "+r.get("original_hours")+" h | Ajustes posteriores: "+r.get("adjustment")+" h");
+        }
         return PdfDocument.download("reporte-"+YearMonth.parse(month)+".pdf","Reporte mensual - "+month,lines);
     }
     private static double rounded(double value) { return Math.round(value*10000.0)/10000.0; }
     private double deduction(Map<String,Object> a) {
+        if("JEFATURA".equals(a.get("volunteer_role"))) return 0;
         if("CANCELADA".equals(a.get("callout_status"))) return 0;
         boolean absent=text(a,"status").equals("AUSENTE");
         if(!absent && ((Number)a.get("policy_version")).intValue()<2) return 0;

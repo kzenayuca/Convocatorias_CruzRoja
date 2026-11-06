@@ -12,9 +12,8 @@ const callFields: Field[] = [
   { name: 'serviceType', label: 'Tipo de servicio (texto libre)', max: 100 }, { name: 'area', label: 'Área', max: 120 },
   { name: 'start', label: 'Inicio (hora de Perú)', type: 'datetime-local' }, { name: 'end', label: 'Fin (hora de Perú)', type: 'datetime-local' },
   { name: 'deadline', label: 'Completar puestos antes de (hora de Perú)', type: 'datetime-local' },
-  { name: 'location', label: 'Lugar' }, { name: 'contact', label: 'Contacto de emergencia' },
-  { name: 'requirements', label: 'Requisitos declarados (uno por línea; verificación personal por jefatura)', type: 'textarea', max: 5000 },
-  { name: 'level', label: 'Nivel mínimo', options: ['BASICO', 'INTERMEDIO', 'AVANZADO'] },
+  { name: 'location', label: 'Lugar' },
+  { name: 'requirements', label: 'Requisitos de esta convocatoria: conocimientos, cursos y experiencia (uno por línea; verificación por jefatura)', type: 'textarea', max: 5000 },
   { name: 'totalVolunteers', label: 'Total de voluntarios (incluye responsable, piloto y radioperador)', type: 'number', min: 1, max: 10000 },
   { name: 'graduateSlots', label: 'Mínimo de graduados dentro del total (0 = indistinto)', type: 'number', min: 0, max: 10000 },
   { name: 'radioSlots', label: 'Radioperador requerido dentro del total (0 o 1)', type: 'number', min: 0, max: 1 },
@@ -50,7 +49,7 @@ export function DetailPage({ user }: { user: Session }) {
   if (error) return <ErrorNotice message={error}/>;
   const requirements = String(c.requirements ?? '').split('\n').filter(Boolean);
   const future = new Date(c.start_at).getTime() > Date.now();
-  const available = ['ABIERTA', 'CERRADA'].includes(c.status) && future && (!c.my_enrollment || ['PENDIENTE', 'EXPIRADA'].includes(c.my_enrollment.status));
+  const available = user.role !== 'JEFATURA' && ['ABIERTA', 'CERRADA'].includes(c.status) && future && (!c.my_enrollment || ['PENDIENTE', 'EXPIRADA'].includes(c.my_enrollment.status));
   const editable = c.can_edit && future && !c.opened_at && ['BORRADOR', 'ABIERTA', 'CERRADA'].includes(c.status);
   const positionOptions = (c.eligible_positions ?? []).map((p: string) => ({ value: p, label: positionNames[p] }));
   return <div className="detail-page"><Link className="link" to="/callouts">← Volver a convocatorias</Link>
@@ -62,37 +61,44 @@ export function DetailPage({ user }: { user: Session }) {
       <div><dt>Inicio · hora de Perú</dt><dd>{date(c.start_at)}</dd></div><div><dt>Fin · hora de Perú</dt><dd>{date(c.end_at)}</dd></div>
       <div><dt>Lugar</dt><dd>{c.location}</dd></div><div><dt>Horas programadas</dt><dd>{Number(c.planned_hours).toLocaleString('es-PE')} h</dd></div>
       <div><dt>Responsable</dt><dd>{c.responsible_name || 'Sin asignar'}</dd></div><div><dt>Contacto</dt><dd>{c.contact || 'Consultar a jefatura'}</dd></div>
-      <div><dt>Inscripciones hasta</dt><dd>{date(c.deadline)}</dd></div><div><dt>Nivel mínimo</dt><dd>{c.minimum_level}</dd></div>
+      <div><dt>Inscripciones hasta</dt><dd>{date(c.deadline)}</dd></div>
     </dl>{c.observations && <div className="soft-panel"><h3>Indicaciones</h3><p className="multiline">{c.observations}</p></div>}</section>
     <section className="section-block"><h2>Vacantes disponibles</h2><p className="muted">Cada persona cuenta una sola vez. Responsable, piloto y radioperador están incluidos en el total. El mínimo de graduados y las funciones son requisitos dentro de ese total, no plazas adicionales. Voluntario admite graduados y personas en formación; voluntario graduado, solo graduados.</p><Positions positions={c.positions ?? []}/></section>
-    <section className="section-block"><h2>Verificación de requisitos</h2><p>Jefatura verifica personalmente las declaraciones. El sistema comprueba tu formación, habilitaciones, cupo y horario.</p>
+    <section className="section-block"><h2>Verificación de requisitos</h2><p>Los conocimientos, cursos y demás condiciones se definen en esta convocatoria; jefatura verifica las declaraciones. El sistema comprueba condición de graduación, habilitaciones, cupo y horario.</p>
       {available && positionOptions.length ? <>{requirements.map((r, i) => <label className="requirement" key={i}><input type="checkbox" checked={checked.includes(i)} onChange={e => setChecked(old => e.target.checked ? [...old, i] : old.filter(x => x !== i))}/>{r}</label>)}
         {checked.length === requirements.length ? <DataForm fields={[{ name: 'position', label: 'Puesto', options: positionOptions }, { name: 'replacementFor', label: 'Código del titular (solo reemplazos)', optional: true }]} label="Inscribirme" submit={v => api(`/callouts/${id}/enrollments`, 'POST', { requirementsAccepted: true, position: v.position, replacementFor: v.replacementFor || null })}/> : <p>Marca todos los requisitos para continuar.</p>}
         <p className="muted">Inscripción automática para cuentas validadas. Los reemplazos requieren revisión del encargado o jefatura.</p>
       </> : <><ul className="requirements-list">{requirements.map((r, i) => <li key={i}>{r}</li>)}</ul><p className="muted">{c.my_enrollment ? 'Consulta el estado de tu participación en Mis servicios.' : 'No hay una inscripción disponible para tu perfil en este momento.'}</p></>}
     </section>
-    {(c.has_photo || c.can_upload_photo) && <section className="section-block"><h2>Recuerdo del equipo</h2>{c.has_photo && <details className="photo-view"><summary>Ver foto del equipo</summary><a href={`/api/v1/callouts/${id}/photo`} target="_blank" rel="noreferrer"><img loading="lazy" src={`/api/v1/callouts/${id}/photo?v=${encodeURIComponent(c.photo_uploaded_at ?? '')}`} alt={`Equipo de ${c.title}`}/></a></details>}{c.can_upload_photo && <details><summary>{c.has_photo ? 'Actualizar foto' : 'Subir foto del equipo'}</summary><PhotoForm id={id!}/></details>}</section>}
+    {(c.has_photo || c.can_upload_photo) && <section className="section-block"><h2>Recuerdo del equipo</h2>{c.has_photo && <details className="photo-view"><summary>Ver foto del equipo</summary><a href={`/api/v1/callouts/${id}/photo`} target="_blank" rel="noreferrer"><img loading="lazy" src={`/api/v1/callouts/${id}/photo?v=${encodeURIComponent(c.photo_uploaded_at ?? '')}`} alt={`Equipo de ${c.title}`}/></a></details>}{c.can_upload_photo && <PhotoAttachment id={id!} hasPhoto={c.has_photo} closed={!!c.closed_at || c.status === 'FINALIZADA'}/>}</section>}
+    {c.can_view_team && <section className="management-area" aria-label="Gestión del servicio"><h2>Gestión del servicio</h2><p className="muted">Equipo, asignaciones y operación. Estos controles solo aparecen para jefatura o el responsable de esta convocatoria.</p>
     {editable && <details className="section-block management"><summary>Gestionar convocatoria</summary><div className="toolbar">{c.status === 'BORRADOR' && <Action path={`/callouts/${id}/status`} body={{ status: 'ABIERTA' }}>Publicar</Action>}<button className="button secondary" onClick={() => setEdit(!edit)}>Editar datos</button><Action path={`/callouts/${id}/status`} body={{ status: 'CANCELADA' }}>Cancelar convocatoria</Action></div>
-      {edit && <DataForm fields={callFields.filter(f => user.role === 'JEFATURA' || f.name !== 'code')} initial={{ ...c, code: c.service_code, serviceType: c.service_type, start: localInput(c.start_at), end: localInput(c.end_at), deadline: localInput(c.deadline), level: c.minimum_level, totalVolunteers: c.total_volunteers, graduateSlots: c.graduate_slots, radioSlots: c.radio_slots, pilotSlots: c.pilot_slots }} submit={v => api(`/callouts/${id}`, 'PUT', { ...v, code: user.role === 'JEFATURA' ? v.code : c.service_code })}/>}
+      {edit && <DataForm fields={callFields.filter(f => user.role === 'JEFATURA' || f.name !== 'code')} initial={{ ...c, code: c.service_code, serviceType: c.service_type, start: localInput(c.start_at), end: localInput(c.end_at), deadline: localInput(c.deadline), totalVolunteers: c.total_volunteers, graduateSlots: c.graduate_slots, radioSlots: c.radio_slots, pilotSlots: c.pilot_slots }} submit={v => api(`/callouts/${id}`, 'PUT', { ...v, code: user.role === 'JEFATURA' ? v.code : c.service_code })}/>}
     </details>}
     {user.role === 'JEFATURA' && editable && <ResponsiblePanel id={id!} current={c.responsible_id}/>}
     {user.role === 'JEFATURA' && editable && ['ABIERTA', 'CERRADA'].includes(c.status) && new Date(c.deadline).getTime() > Date.now() && <AssignmentPanel id={id!} requirements={c.requirements}/>}
-    {c.can_view_team && <TeamPage id={id!} user={user} callout={c}/>}
+    <TeamPage id={id!} user={user} callout={c}/>
+    </section>}
   </div>;
 }
 function ResponsiblePanel({ id, current }: { id: string; current?: string }) {
-  const candidates = useData<Row[]>('/responsible-candidates', []);
-  return <details className="section-block"><summary>Asignar responsable · jefatura</summary><p>Solo un voluntario graduado activo que cumpla los requisitos y no tenga cruce horario. Es una función para este servicio, no un rol global. Cuenta dentro del total y del mínimo de graduados. Puedes convertir a un voluntario general aceptado sin duplicarlo, no al piloto/radioperador. Retirarlo libera su plaza. Verifica también los requisitos declarados antes de asignarlo.</p><ErrorNotice message={candidates.error}/>
-    <DataForm key={current ?? 'none'} fields={[{ name: 'userId', label: 'Responsable', optional: true, options: [{ value: '', label: 'Sin responsable' }, ...candidates.data.map(u => ({ value: u.id, label: `${u.name} ${u.surnames}` }))] }]} initial={{ userId: current ?? '' }} submit={v => api(`/callouts/${id}/responsible`, 'PUT', { userId: v.userId || null })}/>
+  const candidates = useData<Row[]>(`/callouts/${id}/responsible-candidates`, []);
+  const history = useData<Row[]>(`/callouts/${id}/responsible/history`, []); const [changing, setChanging] = useState(false);
+  return <details className="section-block"><summary>{current ? 'Responsable asignado · jefatura' : 'Asignar responsable · jefatura'}</summary><p>Solo un voluntario graduado activo ya inscrito como voluntario general, sin cruce horario. Verifica los requisitos de la convocatoria. No se duplica su plaza ni se convierte al piloto/radioperador. Al retirar la responsabilidad conserva su inscripción, pero pierde los permisos de gestión.</p><ErrorNotice message={candidates.error || history.error}/>
+    {current && <><p>Ya hay un responsable. No se puede asignar otro sin registrar un cambio explícito.</p><button className="button secondary" onClick={() => setChanging(!changing)}>{changing ? 'Cancelar cambio' : 'Cambiar o retirar responsable'}</button></>}
+    {(!current || changing) && <DataForm key={current ?? 'none'} fields={[{ name: 'userId', label: current ? 'Nuevo responsable (vacío = retirar responsabilidad)' : 'Voluntario inscrito', optional: !!current, options: [{ value: '', label: current ? 'Retirar responsabilidad' : 'Selecciona una persona' }, ...candidates.data.map(u => ({ value: u.id, label: `${u.name} ${u.surnames}` }))] }, ...(current ? [{ name: 'reason', label: 'Motivo obligatorio del cambio o retiro', type: 'textarea' }] : [])]} label={current ? 'Confirmar cambio auditado' : 'Asignar responsable'} submit={async v => { await api(current ? `/callouts/${id}/responsible/change` : `/callouts/${id}/responsible`, current ? 'POST' : 'PUT', current ? { userId: v.userId || null, expectedResponsibleId: current, reason: v.reason } : { userId: v.userId }); setChanging(false); }}/ >}
+    {!!history.data.length && <details><summary>Historial de responsables</summary>{history.data.map(h => <p key={h.id}>{date(h.changed_at)} · {h.changed_name}: {h.previous_name || 'Sin responsable'} → {h.next_name || 'Sin responsable'} · {h.reason}</p>)}</details>}
   </details>;
 }
 function AssignmentPanel({ id, requirements }: { id: string; requirements: string }) {
   const [position, setPosition] = useState('SOCORRISTA'); const [userId, setUserId] = useState('');
+  const [query, setQuery] = useState('');
   const [verified, setVerified] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState('');
   const candidates = useData<Row[]>(`/callouts/${id}/assignment-candidates?position=${position}`, []);
-  useEffect(() => { setUserId(''); setVerified(false); setSuccess(''); }, [id, position, requirements]);
+  useEffect(() => { setUserId(''); setQuery(''); setVerified(false); setSuccess(''); }, [id, position, requirements]);
+  const matches = candidates.data.filter(u => `${u.name} ${u.surnames}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()));
   const options = ['SOCORRISTA', 'GRADUADO', 'RADIOPERADOR', 'PILOTO'];
-  return <details className="section-block"><summary>Inscribir directamente · jefatura</summary><p>Completa la convocatoria con personas elegibles, sin esperar su autoinscripción. No se omiten nivel, graduación, habilitaciones, cupo, plazo ni cruces de horario. La persona recibirá una notificación y verá el servicio en su programación.</p>
+  return <details className="section-block"><summary>Inscribir directamente · jefatura</summary><p>Busca por nombre y selecciona una persona elegible. Verifica conocimientos, cursos y demás requisitos de esta convocatoria. No se omiten graduación, habilitaciones, cupo, plazo ni cruces de horario. Se notificará a la persona.</p>
     <p className="multiline"><b>Requisitos que debes verificar:</b>{'\n'}{requirements}</p>
     <form className="card flow-form" onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError(''); setSuccess('');
@@ -102,7 +108,9 @@ function AssignmentPanel({ id, requirements }: { id: string; requirements: strin
       } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
     }}>
       <label className="field">Puesto<select name="assignmentPosition" value={position} onChange={e => setPosition(e.target.value)}>{options.map(p => <option key={p} value={p}>{positionNames[p]}</option>)}</select></label>
-      <label className="field">Persona elegible<select name="assignmentUser" required value={userId} onChange={e => { setUserId(e.target.value); setVerified(false); }} disabled={candidates.loading || busy}><option value="">Selecciona una persona</option>{candidates.data.map(u => <option key={u.id} value={u.id}>{u.name} {u.surnames} · {u.graduated ? 'Graduado' : 'En formación'} · {u.training_level}</option>)}</select></label>
+      <label className="field">Buscar persona por nombre<input name="assignmentSearch" type="search" autoComplete="off" value={query} placeholder="Escribe nombres o apellidos…" onChange={e => { setQuery(e.target.value); setUserId(''); setVerified(false); }}/></label>
+      <label className="field">Persona elegible<select name="assignmentUser" required value={userId} onChange={e => { setUserId(e.target.value); setVerified(false); }} disabled={candidates.loading || busy}><option value="">Selecciona una persona</option>{matches.map(u => <option key={u.id} value={u.id}>{u.name} {u.surnames} · {u.graduated ? 'Graduado' : 'En formación'}</option>)}</select></label>
+      {!candidates.loading && !!candidates.data.length && !matches.length && <p>No hay coincidencias para ese nombre.</p>}
       {!candidates.loading && !candidates.data.length && <p>No hay personas elegibles para este puesto con los cupos y horarios actuales.</p>}
       <label className="requirement"><input name="assignmentVerified" type="checkbox" required checked={verified} onChange={e => setVerified(e.target.checked)}/>He verificado todos los requisitos declarados para esta persona.</label>
       <ErrorNotice message={error || candidates.error}/>{success && <p role="status">{success}</p>}
@@ -116,7 +124,7 @@ function TeamPage({ id, user, callout: c }: { id: string; user: Session; callout
     {Object.keys(positionNames).map(position => {
       const rows = applicants.data.filter(e => e.position === position); if (!rows.length) return null;
       return <section className="team-group" key={position}><h3>{positionNames[position]}</h3>{rows.map(e => <details className="card" key={e.id}>
-        <summary>{e.name} {e.surnames} · {e.status === 'CONFIRMADA' ? 'ACEPTADA' : e.status}</summary><p>Formación: {e.training_level} · Inscripción: {date(e.created_at)}</p>{e.assigned_by && <p>Asignación directa de jefatura: {date(e.assigned_at)} · Requisitos verificados.</p>}<p>Código: {e.id}</p>{e.cancellation_requested_at && <p>Solicitó reemplazo: {e.cancellation_reason}</p>}
+        <summary>{e.name} {e.surnames} · {e.status === 'CONFIRMADA' ? 'ACEPTADA' : e.status}</summary><p>Inscripción: {date(e.created_at)}</p>{e.assigned_by && <p>Asignación directa de jefatura: {date(e.assigned_at)} · Requisitos verificados.</p>}<p>Código: {e.id}</p>{e.cancellation_requested_at && <p>Solicitó reemplazo: {e.cancellation_reason}</p>}
         {new Date(c.start_at).getTime() > Date.now() && ((e.status === 'PENDIENTE_REEMPLAZO' && c.can_operate) || (e.status === 'CONFIRMADA' && user.role === 'JEFATURA')) && <DataForm fields={[{ name: 'decision', label: 'Decisión', options: e.status === 'CONFIRMADA' ? ['RECHAZAR'] : ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo' }]} submit={v => api(`/enrollments/${e.id}/review`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}
       </details>)}</section>;
     })}
@@ -149,5 +157,9 @@ function MaterialsPanel({ id }: { id: string }) {
 }
 function PhotoForm({ id }: { id: string }) {
   const [file, setFile] = useState<File>(); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
-  return <form className="soft-panel" onSubmit={async e => { e.preventDefault(); if (!file) return; setBusy(true); setMessage(''); try { if (file.size > 50 * 1024 * 1024) throw new Error('Máximo 50 MB.'); const data = new FormData(); data.append('file', file); await api(`/callouts/${id}/photo`, 'POST', data); changed(); setMessage('Foto guardada.'); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }}><label className="field">Foto JPG/PNG · hasta 50 MB y 40 megapíxeles<input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/></label><button className="button secondary" disabled={busy}>Guardar foto</button><p role="status">{message}</p></form>;
+  return <form className="soft-panel" onSubmit={async e => { e.preventDefault(); if (!file) return; setBusy(true); setMessage(''); try { if (file.size > 10 * 1024 * 1024) throw new Error('Máximo 10 MB.'); const data = new FormData(); data.append('file', file); await api(`/callouts/${id}/photo`, 'POST', data); changed(); setMessage('Foto guardada.'); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }}><label className="field">Foto opcional JPG/PNG · hasta 10 MB y 40 megapíxeles<input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/></label><button className="button secondary" disabled={busy}>Guardar foto</button><p role="status">{message}</p></form>;
+}
+function PhotoAttachment({ id, hasPhoto, closed }: { id: string; hasPhoto: boolean; closed: boolean }) {
+  const [open, setOpen] = useState(false);
+  return <div>{closed && !hasPhoto && <p role="status">Servicio cerrado. Puedes adjuntar una foto del equipo ahora o más adelante; es opcional.</p>}<button className="button secondary" onClick={() => setOpen(!open)}>{open ? 'Cerrar adjunto' : hasPhoto ? 'Reemplazar foto' : 'Adjuntar foto'}</button>{open && <PhotoForm id={id}/>}</div>;
 }

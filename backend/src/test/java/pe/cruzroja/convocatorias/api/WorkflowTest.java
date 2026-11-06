@@ -109,6 +109,7 @@ class WorkflowTest {
         c.enroll(id,"SOCORRISTA");
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM enrollments WHERE id=?",String.class,enrollment(id,volunteer)));
         assertEquals("ABIERTA",db.queryForObject("SELECT status FROM callouts WHERE id=?",String.class,id));
+        responsible.enroll(id,"SOCORRISTA");
         new Client().login("jefatura@demo.pe").ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria));
         assertEquals("CERRADA",db.queryForObject("SELECT status FROM callouts WHERE id=?",String.class,id));
         assertEquals(maria,db.queryForObject("SELECT responsible_id FROM callouts WHERE id=?",UUID.class,id));
@@ -149,7 +150,7 @@ class WorkflowTest {
         var start=freeSlot(); var id=service(start,start.plusHours(3));
         db.update("UPDATE callouts SET total_volunteers=2 WHERE id=?",id);
         var c=new Client().login("voluntario@demo.pe"); var replacement=new Client().login("lucia@demo.pe"); var boss=new Client().login("maria@demo.pe");
-        c.enroll(id,"SOCORRISTA"); new Client().login("jefatura@demo.pe").ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria)); UUID original=enrollment(id,volunteer);
+        c.enroll(id,"SOCORRISTA"); boss.enroll(id,"SOCORRISTA"); new Client().login("jefatura@demo.pe").ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria)); UUID original=enrollment(id,volunteer);
         c.ok("/enrollments/"+original+"/cancel-request","POST",Map.of("reason","No podré asistir; coordino reemplazo"));
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM enrollments WHERE id=?",String.class,original));
         replacement.ok("/callouts/"+id+"/enrollments","POST",Map.of("requirementsAccepted",true,"position","SOCORRISTA","replacementFor",original));
@@ -183,7 +184,7 @@ class WorkflowTest {
         assertEquals(after,c.ok("/attendance/hours?month="+month,"GET",null).get("hours").asDouble());
         assertEquals(4+20.0/60,db.queryForObject("SELECT approved_hours FROM attendance_records WHERE id=?",Double.class,a),.0001);
     }
-    @Test void absenceStaysDeductedDuringReviewAndRequiresReplacement() throws Exception {
+    @Test void chiefCanResolveAnAbsenceAfterReviewingItsEvidence() throws Exception {
         var end=Store.now().minusHours(50); var start=end.minusHours(3); var id=service(start,end); UUID e=fixtureEnrollment(id,volunteer);
         var c=new Client().login("voluntario@demo.pe"); var admin=new Client().login("jefatura@demo.pe"); c.ok("/attendance","GET",null);
         UUID a=db.queryForObject("SELECT id FROM attendance_records WHERE enrollment_id=?",UUID.class,e);
@@ -192,7 +193,7 @@ class WorkflowTest {
         c.ok("/attendance/"+a+"/justifications","POST",Map.of("reason","Solicitud excepcional fuera de plazo"));
         UUID j=db.queryForObject("SELECT id FROM justifications WHERE absence_id=?",UUID.class,a);
         assertTrue(db.queryForObject("SELECT late FROM justifications WHERE id=?",Boolean.class,j));
-        assertEquals(400,admin.request("/justifications/"+j+"/resolve","POST",Map.of("approved",true,"comment","Falta verificar reemplazo")).statusCode());
+        admin.ok("/justifications/"+j+"/resolve","POST",Map.of("approved",false,"comment","Falta verificar evidencia"));
         String month=YearMonth.from(start).toString(); double before=c.ok("/attendance/hours?month="+month,"GET",null).get("hours").asDouble();
         UUID repl=fixtureEnrollment(id,lucia); db.update("UPDATE enrollments SET replacement_for=?,reviewed_at=? WHERE id=?",e,start.minusMinutes(1),repl);
         admin.ok("/justifications/"+j+"/resolve","POST",Map.of("approved",true,"comment","Se verificó reemplazo histórico"));
@@ -290,9 +291,11 @@ class WorkflowTest {
         var recruit= recruiter.ok("/schedule"+query,"GET",null); assertEquals(1,recruit.size()); assertEquals(other.toString(),recruit.get(0).get("id").asText());
         assertEquals(2,admin.ok("/schedule"+query,"GET",null).size());
         assertEquals(403,c.request("/callouts/"+other+"/enrollments","GET",null).statusCode());
-        try(var pdf=org.apache.pdfbox.Loader.loadPDF(c.pdf("/schedule/pdf"+query))) {
+        assertEquals(403,c.request("/schedule/pdf"+query,"GET",null).statusCode());
+        assertEquals(403,recruiter.request("/schedule/pdf"+query,"GET",null).statusCode());
+        try(var pdf=org.apache.pdfbox.Loader.loadPDF(admin.pdf("/schedule/pdf"+query))) {
             String text=new org.apache.pdfbox.text.PDFTextStripper().getText(pdf);
-            assertTrue(text.contains("T-"+mine)); assertFalse(text.contains("T-"+other)); assertFalse(text.contains("Luis Quispe"));
+            assertTrue(text.contains("T-"+mine)); assertTrue(text.contains("T-"+other));
         }
         assertEquals(403,recruiter.request("/reports?month="+YearMonth.from(start),"GET",null).statusCode());
         c.ok("/callouts/"+mine,"GET",null);
@@ -322,6 +325,7 @@ class WorkflowTest {
         byte[] large=Arrays.copyOf(output.toByteArray(),3*1024*1024);
         assertEquals(200,admin.photo(id,large));
         assertEquals(large.length,db.queryForObject("SELECT octet_length(team_photo) FROM callouts WHERE id=?",Integer.class,id));
+        assertEquals(413,admin.photo(id,Arrays.copyOf(output.toByteArray(),10*1024*1024+1)));
     }
     @Test void marksAutoCloseAfterSevenDaysWithoutInventingMissingTimes() throws Exception {
         var end=Store.now().minusDays(8); var start=end.minusHours(3); var id=service(start,end); var e=fixtureEnrollment(id,volunteer); var missing=fixtureEnrollment(id,lucia);
@@ -401,9 +405,10 @@ class WorkflowTest {
         UUID id=UUID.fromString(admin.ok("/callouts","POST",body).get("id").asText()); admin.ok("/callouts/"+id+"/status","POST",Map.of("status","ABIERTA"));
         user.enroll(id,"SOCORRISTA"); assertEquals(2,db.queryForObject("SELECT capacity FROM callouts WHERE id=?",Integer.class,id));
         assertEquals(403,user.request("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria)).statusCode());
+        admin.assign(id,maria,"SOCORRISTA");
         admin.ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria));
-        var remove=new HashMap<String,Object>(); remove.put("userId",null); admin.ok("/callouts/"+id+"/responsible","PUT",remove);
-        assertEquals("ABIERTA",db.queryForObject("SELECT status FROM callouts WHERE id=?",String.class,id));
+        var remove=new HashMap<String,Object>(); remove.put("userId",null); remove.put("expectedResponsibleId",maria); remove.put("reason","Retiro explícito; conserva su plaza"); admin.ok("/callouts/"+id+"/responsible/change","POST",remove);
+        assertEquals("CERRADA",db.queryForObject("SELECT status FROM callouts WHERE id=?",String.class,id));
         admin.ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria));
         assertEquals(2,db.queryForObject("SELECT capacity FROM callouts WHERE id=?",Integer.class,id));
         assertEquals("CERRADA",db.queryForObject("SELECT status FROM callouts WHERE id=?",String.class,id));
@@ -430,6 +435,7 @@ class WorkflowTest {
         try {
             db.update("UPDATE volunteer_profiles SET radio_qualified=true WHERE user_id=?",maria);
             db.update("UPDATE volunteer_profiles SET pilot_qualified=true WHERE user_id=?",sofia);
+            admin.assign(id,recruiter,"SOCORRISTA");
             admin.ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",recruiter));
             new Client().login("voluntario@demo.pe").enroll(id,"SOCORRISTA");
             var extra=new Client().login("lucia@demo.pe");
@@ -520,10 +526,10 @@ class WorkflowTest {
         assertEquals(400,admin.request("/callouts/"+id+"/assignments","POST",Map.of("userId",lucia,"position","SOCORRISTA","requirementsVerified",true)).statusCode());
         assertEquals(0,admin.ok("/callouts/"+id+"/assignment-candidates?position=SOCORRISTA","GET",null).size());
     }
-    @Test void directAssignmentCannotBypassLevelsStatusGraduationOrSpecialistQualifications() throws Exception {
+    @Test void directAssignmentIgnoresLegacyLevelsButChecksStatusGraduationAndQualifications() throws Exception {
         var start=freeSlot(); var admin=new Client().login("jefatura@demo.pe"); var id=service(start,start.plusHours(3));
         db.update("UPDATE callouts SET minimum_level='AVANZADO' WHERE id=?",id);
-        assertEquals(400,admin.request("/callouts/"+id+"/assignments","POST",Map.of("userId",volunteer,"position","SOCORRISTA","requirementsVerified",true)).statusCode());
+        assertTrue(admin.ok("/callouts/"+id+"/assignment-candidates?position=SOCORRISTA","GET",null).toString().contains(volunteer.toString()));
         UUID inactive=UUID.fromString("00000000-0000-0000-0000-000000000010");
         assertEquals(400,admin.request("/callouts/"+id+"/assignments","POST",Map.of("userId",inactive,"position","SOCORRISTA","requirementsVerified",true)).statusCode());
         db.update("UPDATE callouts SET minimum_level='BASICO',graduate_slots=1 WHERE id=?",id);
@@ -573,12 +579,13 @@ class WorkflowTest {
         assertFalse(account.ok("/callouts/"+id,"GET",null).get("can_edit").asBoolean());
         assertEquals(403,account.request("/callouts","POST",callBody(start,"NO-"+UUID.randomUUID())).statusCode());
         assertEquals(403,account.request("/callouts/"+id+"/enrollments","GET",null).statusCode());
+        admin.assign(id,formerRecruiter,"SOCORRISTA");
         admin.ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",formerRecruiter));
         assertTrue(account.ok("/callouts/"+id,"GET",null).get("can_edit").asBoolean());
         assertTrue(account.ok("/callouts/"+id,"GET",null).get("can_upload_photo").asBoolean());
         assertEquals(403,account.request("/callouts/"+other+"/enrollments","GET",null).statusCode());
         assertEquals(403,account.request("/callouts/"+other+"/assignments","POST",Map.of("userId",lucia,"position","SOCORRISTA","requirementsVerified",true)).statusCode());
-        var clear=new HashMap<String,Object>(); clear.put("userId",null); admin.ok("/callouts/"+id+"/responsible","PUT",clear);
+        var clear=new HashMap<String,Object>(); clear.put("userId",null); clear.put("expectedResponsibleId",formerRecruiter); clear.put("reason","Retiro explícito de permisos"); admin.ok("/callouts/"+id+"/responsible/change","POST",clear);
         assertFalse(account.ok("/callouts/"+id,"GET",null).get("can_operate").asBoolean());
     }
     @Test void responsibleRequiresAVolunteerGraduateAndRetiredRolesCannotBeAssigned() throws Exception {
@@ -589,7 +596,7 @@ class WorkflowTest {
         boolean graduated=db.queryForObject("SELECT graduated FROM users WHERE id=?",Boolean.class,chief);
         try {
             db.update("UPDATE users SET graduated=true WHERE id=?",chief);
-            assertFalse(admin.ok("/responsible-candidates","GET",null).toString().contains(chief.toString()));
+            assertFalse(admin.ok("/callouts/"+id+"/responsible-candidates","GET",null).toString().contains(chief.toString()));
             assertEquals(400,admin.request("/callouts/"+id+"/responsible","PUT",Map.of("userId",chief)).statusCode());
         } finally { db.update("UPDATE users SET graduated=? WHERE id=?",graduated,chief); }
     }
@@ -606,5 +613,100 @@ class WorkflowTest {
         assertEquals("GRADUADO",after.get("condition").asText()); assertEquals(200,after.get("progress").get("required").asDouble());
         assertEquals(before.get("progress").get("balance").asDouble(),after.get("progress").get("balance").asDouble());
         assertEquals("VOLUNTARIO",user.ok("/auth/me","GET",null).get("role").asText());
+    }
+    @Test void retiredLevelsAreNeitherRequiredNorExposedAndCannotBlockParticipation() throws Exception {
+        var admin=new Client().login("jefatura@demo.pe"); var user=new Client().login("voluntario@demo.pe");
+        var body=callBody(freeSlot(),"LV-"+UUID.randomUUID()); body.remove("level"); body.remove("contact");
+        UUID id=UUID.fromString(admin.ok("/callouts","POST",body).get("id").asText());
+        db.update("UPDATE callouts SET minimum_level='AVANZADO' WHERE id=?",id);
+        admin.ok("/callouts/"+id+"/status","POST",Map.of("status","ABIERTA"));
+        assertFalse(user.ok("/callouts/"+id,"GET",null).has("minimum_level"));
+        user.enroll(id,"SOCORRISTA");
+        assertFalse(user.ok("/profile","GET",null).has("training_level"));
+        admin.ok("/users/"+volunteer,"PUT",Map.of("role","VOLUNTARIO","graduated",false,"status","ACTIVO","comment","Sin niveles"));
+        assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM enrollments WHERE callout_id=? AND volunteer_id=?",String.class,id,volunteer));
+    }
+    @Test void responsibilityChangesAreExplicitAuditedAndKeepTheOldVolunteerEnrolled() throws Exception {
+        var start=freeSlot(); var id=service(start,start.plusHours(3)); db.update("UPDATE callouts SET total_volunteers=3 WHERE id=?",id);
+        UUID luis=UUID.fromString("00000000-0000-0000-0000-000000000002");
+        var admin=new Client().login("jefatura@demo.pe"); var mariaClient=new Client().login("maria@demo.pe");
+        var outsider=new Client().login("lucia@demo.pe"); var participant=new Client().login("voluntario@demo.pe");
+        assertEquals(400,admin.request("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria)).statusCode());
+        admin.assign(id,maria,"SOCORRISTA"); admin.assign(id,luis,"SOCORRISTA");
+        assertFalse(mariaClient.ok("/callouts/"+id,"GET",null).get("can_operate").asBoolean());
+        admin.ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria));
+        assertEquals("Consultar a jefatura",outsider.ok("/callouts/"+id,"GET",null).get("contact").asText());
+        assertEquals("Consultar a jefatura",participant.ok("/callouts/"+id,"GET",null).get("contact").asText());
+        participant.enroll(id,"SOCORRISTA");
+        String phone=db.queryForObject("SELECT phone FROM volunteer_profiles WHERE user_id=?",String.class,maria);
+        assertEquals(phone,participant.ok("/callouts/"+id,"GET",null).get("contact").asText());
+        assertEquals(400,admin.request("/callouts/"+id+"/responsible","PUT",Map.of("userId",luis)).statusCode());
+        assertEquals(400,admin.request("/callouts/"+id+"/responsible/change","POST",Map.of("expectedResponsibleId",maria,"userId",luis,"reason","")).statusCode());
+        admin.ok("/callouts/"+id+"/responsible/change","POST",Map.of("expectedResponsibleId",maria,"userId",luis,"reason","Cambio de coordinador verificado"));
+        assertFalse(mariaClient.ok("/callouts/"+id,"GET",null).get("can_operate").asBoolean());
+        assertEquals("SOCORRISTA",db.queryForObject("SELECT position FROM enrollments WHERE callout_id=? AND volunteer_id=?",String.class,id,maria));
+        assertEquals(3,db.queryForObject("SELECT count(*) FROM enrollments WHERE callout_id=? AND status='CONFIRMADA'",Integer.class,id));
+        assertEquals(2,admin.ok("/callouts/"+id+"/responsible/history","GET",null).size());
+        assertEquals(400,admin.request("/callouts/"+id+"/responsible/change","POST",Map.of("expectedResponsibleId",maria,"userId",luis,"reason","Pantalla obsoleta")).statusCode());
+        var clear=new HashMap<String,Object>(); clear.put("expectedResponsibleId",luis); clear.put("userId",null); clear.put("reason","Sin encargado designado");
+        admin.ok("/callouts/"+id+"/responsible/change","POST",clear);
+        assertEquals("Consultar a jefatura",participant.ok("/callouts/"+id,"GET",null).get("contact").asText());
+    }
+    @Test void closedMonthJustificationDecisionsAppendReversibleAdjustmentsWithoutRewritingTheSnapshot() throws Exception {
+        var month=YearMonth.of(1990,1); while(db.queryForObject("SELECT count(*) FROM monthly_reports WHERE month=?",Integer.class,month.atDay(1))>0) month=month.plusMonths(1);
+        var start=month.atDay(10).atTime(8,0); var end=start.plusHours(3); var id=service(start,end); var e=fixtureEnrollment(id,volunteer);
+        var admin=new Client().login("jefatura@demo.pe"); var user=new Client().login("voluntario@demo.pe"); user.ok("/attendance","GET",null);
+        UUID a=db.queryForObject("SELECT id FROM attendance_records WHERE enrollment_id=?",UUID.class,e);
+        admin.ok("/attendance/"+a+"/confirm","POST",Map.of("checkIn",start.plusMinutes(20).toString(),"checkOut",end.toString(),"observations","Marca tardía revisada"));
+        admin.ok("/reports/approve?month="+month,"POST",Map.of());
+        var snapshot=db.queryForMap("SELECT * FROM monthly_report_rows WHERE month=? AND user_id=?",month.atDay(1),volunteer);
+        user.ok("/attendance/"+a+"/justifications","POST",Map.of("reason","Evidencia presentada después del cierre"));
+        UUID j=db.queryForObject("SELECT id FROM justifications WHERE absence_id=?",UUID.class,a);
+        assertEquals(403,user.request("/justifications/"+j+"/resolve","POST",Map.of("approved",true,"comment","Sin permiso")).statusCode());
+        admin.ok("/justifications/"+j+"/resolve","POST",Map.of("approved",true,"comment","Evidencia verificada por jefatura"));
+        var after=user.ok("/attendance/hours?month="+month,"GET",null);
+        double original=((Number)snapshot.get("hours")).doubleValue();
+        assertEquals(original+40.0/60,after.get("hours").asDouble(),.0002); assertEquals(original,after.get("original_hours").asDouble());
+        admin.ok("/justifications/"+j+"/resolve","POST",Map.of("approved",true,"comment","Revisión repetida sin duplicar ajuste"));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM monthly_report_adjustments WHERE month=? AND user_id=?",Integer.class,month.atDay(1),volunteer));
+        admin.ok("/justifications/"+j+"/resolve","POST",Map.of("approved",false,"comment","Nueva evidencia: se revoca la aprobación"));
+        assertEquals(original,user.ok("/attendance/hours?month="+month,"GET",null).get("hours").asDouble(),.0002);
+        assertEquals(snapshot,db.queryForMap("SELECT * FROM monthly_report_rows WHERE month=? AND user_id=?",month.atDay(1),volunteer));
+        assertEquals(3,db.queryForObject("SELECT count(*) FROM justification_resolutions WHERE justification_id=?",Integer.class,j));
+        assertEquals(chief,db.queryForObject("SELECT resolved_by FROM justifications WHERE id=?",UUID.class,j));
+        assertTrue(admin.ok("/justifications","GET",null).toString().contains("Nueva evidencia"));
+        var report=admin.ok("/reports?month="+month,"GET",null);
+        for(var row:report) if(row.get("id").asText().equals(volunteer.toString())) assertEquals(original,row.get("hours").asDouble(),.0002);
+    }
+    @Test void chiefsHaveNoTargetPenaltyJustificationOrNewVolunteerEnrollment() throws Exception {
+        var admin=new Client().login("jefatura@demo.pe"); assertFalse(admin.ok("/attendance/progress","GET",null).get("applicable").asBoolean());
+        var start=freeSlot(); var future=service(start,start.plusHours(3));
+        assertEquals(400,admin.request("/callouts/"+future+"/enrollments","POST",Map.of("position","SOCORRISTA","requirementsAccepted",true)).statusCode());
+        var end=Store.now().minusHours(2); var past=service(end.minusHours(3),end); var e=fixtureEnrollment(past,chief);
+        admin.ok("/attendance","GET",null); UUID a=db.queryForObject("SELECT id FROM attendance_records WHERE enrollment_id=?",UUID.class,e);
+        assertEquals(403,admin.request("/attendance/"+a+"/justifications","POST",Map.of("reason","No corresponde")).statusCode());
+        var records=admin.ok("/attendance","GET",null);
+        for(var record:records) assertEquals(0,record.get("deduction").asDouble());
+        assertEquals(0,admin.ok("/attendance/hours?month="+YearMonth.from(end),"GET",null).get("deductions").asDouble());
+    }
+    @Test void onlyTheConfirmedResponsibleCanReviewThisTeamOrUploadItsPhoto() throws Exception {
+        var start=freeSlot(); var id=service(start,start.plusHours(3)); var other=service(start,start.plusHours(3));
+        db.update("UPDATE callouts SET total_volunteers=2 WHERE id=?",id);
+        var admin=new Client().login("jefatura@demo.pe"); var manager=new Client().login("maria@demo.pe");
+        admin.assign(id,maria,"SOCORRISTA"); admin.assign(id,volunteer,"SOCORRISTA");
+        admin.ok("/callouts/"+id+"/responsible","PUT",Map.of("userId",maria));
+        var image=new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB); var bytes=new java.io.ByteArrayOutputStream(); javax.imageio.ImageIO.write(image,"png",bytes);
+        assertEquals(200,manager.photo(id,bytes.toByteArray())); assertEquals(403,manager.photo(other,bytes.toByteArray()));
+        var end=Store.now().minusHours(2).withSecond(0).withNano(0); var pastStart=end.minusHours(3);
+        db.update("UPDATE callouts SET start_at=?,end_at=?,opened_at=?,status='CERRADA' WHERE id=?",pastStart,end,pastStart,id);
+        var attendance=manager.ok("/callouts/"+id+"/attendance","GET",null); UUID record=null;
+        for(var a:attendance) if(a.get("volunteer_id").asText().equals(volunteer.toString())) record=UUID.fromString(a.get("id").asText());
+        assertNotNull(record);
+        manager.ok("/attendance/"+record+"/confirm","POST",Map.of("checkIn",pastStart.toString(),"checkOut",end.toString(),"observations","Equipo del responsable confirmado"));
+        manager.ok("/callouts/"+id+"/operation","POST",Map.of("action","CERRAR","observations","Cierre sin foto obligatoria"));
+        assertEquals(200,manager.photo(id,bytes.toByteArray()));
+        db.update("UPDATE enrollments SET position='SOCORRISTA' WHERE callout_id=? AND volunteer_id=?",id,maria);
+        assertEquals(403,manager.photo(id,bytes.toByteArray()));
+        assertEquals(403,manager.request("/attendance/"+record+"/confirm","POST",Map.of("checkIn",pastStart.toString(),"checkOut",end.toString(),"observations","Sin permisos vigentes")).statusCode());
     }
 }

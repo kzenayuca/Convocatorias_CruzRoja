@@ -11,7 +11,7 @@ export function ServicesPage() {
   return <><p className="eyebrow">Tu participación</p><h1>Mis servicios</h1><p className="lead">Inscripciones, asistencia y horas guardadas en tu cuenta.</p>
     <ErrorNotice message={enrollments.error || attendance.error || hours.error}/><label className="field">Mes<input type="month" value={month} onChange={e => setMonth(e.target.value)}/></label>
     <div className="metrics"><div className="metric-card"><b>{hours.data.hours ?? 0} h</b><span>Saldo del mes</span></div><div className="metric-card"><b>{hours.data.earned ?? 0} h</b><span>Horas reconocidas</span></div><div className="metric-card"><b>{hours.data.deductions ?? 0} h</b><span>Deducciones</span></div></div>
-    {hours.data.closed && <p className="participation-note">Mes aprobado por jefatura. Sus resultados ya no se modifican.</p>}
+    {hours.data.closed && <p className="participation-note">Mes aprobado. Saldo original: {hours.data.original_hours} h · Ajustes posteriores: {hours.data.adjustment} h. Se conserva el cierre original.</p>}
     <HoursProgress/>
     <p>El saldo puede ser negativo. Las justificaciones aprobadas revierten el descuento sin otorgar horas no realizadas.</p><h2>Mis inscripciones</h2>
     {!enrollments.loading && !enrollments.data.length && <div className="empty">Todavía no tienes inscripciones. <Link className="link" to="/callouts">Buscar convocatoria →</Link></div>}
@@ -26,9 +26,9 @@ export function ServicesPage() {
       <p>Retraso: {delay(a.late_minutes)} · Deducción vigente: {a.deduction} h</p>
       {a.policy_version < 2 && <p>Registro histórico: conserva el cálculo anterior hasta revisión administrativa.</p>}
       <p>{a.observations}</p><p>Justificación: {a.justification_status || 'Sin presentar'}</p>
-      {a.month_closed && <p>Mes aprobado: no admite cambios ni nuevas justificaciones.</p>}
-      {!a.month_closed && (a.status === 'AUSENTE' || a.policy_version >= 2 && a.late_minutes > 10) && !a.justification_status && <>
-        <p>Plazo ordinario: 48 h desde el final. Solo la inasistencia requiere reemplazo aceptado antes del inicio; la tardanza no. Las presentaciones tardías requieren revisión excepcional.</p>
+      {a.month_closed && <p>Mes aprobado: la asistencia queda congelada. Una justificación resuelta genera un ajuste separado.</p>}
+      {(a.status === 'AUSENTE' || a.policy_version >= 2 && a.late_minutes > 10) && !a.justification_status && <>
+        <p>Plazo ordinario: 48 h desde el final. Jefatura evalúa el motivo y la evidencia disponible, incluido el reemplazo cuando corresponda. Las presentaciones tardías requieren revisión excepcional.</p>
         <DataForm fields={[{ name: 'reason', label: 'Motivo de la justificación', type: 'textarea' }]} label="Presentar justificación" submit={v => api(`/attendance/${a.id}/justifications`, 'POST', v)}/>
       </>}
     </details>)}
@@ -37,7 +37,14 @@ export function ServicesPage() {
 
 export function JustificationsPage({ user }: { user: Session }) {
   const { data, error } = useData<Row[]>('/justifications', []);
-  return <><p className="eyebrow">Asistencia</p><h1>Justificaciones</h1><ErrorNotice message={error}/>{!data.length && <div className="empty">No hay justificaciones.</div>}{data.map(j => <details className="card" key={j.id}><summary>{j.name} · {j.kind} · {j.title} · {j.status} {j.late && '· Fuera de las 48 h'}</summary><p>{j.reason}</p><p>Presentada: {date(j.submitted_at)}{j.kind === 'AUSENCIA' && ` · Reemplazos aceptados a tiempo: ${j.replacements}`}</p><p>Resolución: {j.resolution_comment || 'Pendiente'}</p>{user.role === 'JEFATURA' && <DataForm fields={[{ name: 'decision', label: 'Resolución / revisión', options: ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo de la resolución', type: 'textarea' }]} submit={v => api(`/justifications/${j.id}/resolve`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}</details>)}</>;
+  const [status, setStatus] = useState('TODAS'); const [query, setQuery] = useState(''); const [month, setMonth] = useState('');
+  const filtered = data.filter(j => (status === 'TODAS' || j.status === status) && (!month || String(j.start_at).startsWith(month)) && `${j.name} ${j.surnames} ${j.title}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  return <><p className="eyebrow">{user.role === 'JEFATURA' ? 'Gestión de incidencias de todos los voluntarios' : 'Asistencia'}</p><h1>Justificaciones</h1>
+    <p className="lead">{user.role === 'JEFATURA' ? 'Revisa pendientes, consulta decisiones y acepta o rechaza con un motivo. Jefatura no necesita justificarse ni recibe penalizaciones.' : 'Consulta el estado de tus solicitudes y sus resoluciones.'}</p><ErrorNotice message={error}/>
+    <div className="toolbar"><label className="field">Estado<select aria-label="Estado de justificación" value={status} onChange={e => setStatus(e.target.value)}>{['TODAS', 'PENDIENTE', 'APROBADA', 'RECHAZADA'].map(s => <option key={s}>{s}</option>)}</select></label><label className="field">Persona o servicio<input aria-label="Buscar justificaciones" value={query} onChange={e => setQuery(e.target.value)}/></label><label className="field">Mes del servicio<input type="month" value={month} onChange={e => setMonth(e.target.value)}/></label><button className="button secondary" onClick={() => { setStatus('TODAS'); setQuery(''); setMonth(''); }}>Limpiar filtros</button></div>
+    <p>{filtered.length} justificaciones</p>{!filtered.length && <div className="empty">No hay justificaciones con esos filtros.</div>}{filtered.map(j => <details className="card" key={j.id}><summary>{j.name} {j.surnames} · {j.kind} · {j.title} · {j.status} {j.late && '· Fuera de las 48 h'}</summary><p className="multiline">{j.reason}</p><p>Servicio: {date(j.start_at)} · Presentada: {date(j.submitted_at)}{j.kind === 'AUSENCIA' && ` · Reemplazos aceptados a tiempo: ${j.replacements}`}</p><p>Resolución: {j.resolution_comment || 'Pendiente'}</p>{j.resolved_at && <p>Decidió: {j.resolved_name} · {date(j.resolved_at)}</p>}{j.month_closed && <p>Mes cerrado: cualquier cambio de penalización se registra como ajuste, sin borrar el cierre.</p>}
+      {!!j.history?.length && <details><summary>Historial de decisiones y penalizaciones</summary>{j.history.map((h: Row) => <p key={h.id}>{date(h.resolved_at)} · {h.resolved_name} · {h.previous_status} → {h.status} · Deducción: {h.deduction_before} → {h.deduction_after} h · {h.comment}</p>)}</details>}
+      {user.role === 'JEFATURA' && <details open={j.status === 'PENDIENTE'}><summary>{j.status === 'PENDIENTE' ? 'Resolver justificación' : 'Revisar decisión (queda auditado)'}</summary><DataForm fields={[{ name: 'decision', label: 'Decisión', options: ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo obligatorio de la resolución', type: 'textarea' }]} label="Registrar decisión" submit={v => api(`/justifications/${j.id}/resolve`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/></details>}</details>)}</>;
 }
 
 export function NotificationsPage({ user }: { user: Session }) {
@@ -53,12 +60,12 @@ export function ReportsPage() {
   const [month, setMonth] = useState(() => { const now = new Date(); now.setUTCDate(1); now.setUTCMonth(now.getUTCMonth() - 1); return now.toISOString().slice(0, 7); });
   const { data, error } = useData<Row[]>(`/reports?month=${month}`, []); const status = useData<Row>(`/reports/status?month=${month}`, {});
   const [confirm, setConfirm] = useState(false);
-  return <><p className="eyebrow">Jefatura</p><h1>Reporte de horas</h1><p className="lead">Revisa el mes y publícalo entre los días 1 y 3 del siguiente. Una vez aprobado, no admite correcciones.</p>
+  return <><p className="eyebrow">Jefatura</p><h1>Reporte de horas</h1><p className="lead">Revisa el mes y publícalo entre los días 1 y 3 del siguiente. Se conserva el cierre original; las justificaciones posteriores se reflejan como ajustes auditados.</p>
     <label className="field">Mes<input type="month" value={month} onChange={e => { if (e.target.value) { setMonth(e.target.value); setConfirm(false); } }}/></label><ErrorNotice message={error || status.error}/>
     <section className="soft-panel"><p><b>{status.data.status}</b> · Fecha prevista de publicación: {status.data.due}</p>{status.data.overdue && <p role="status">Publicación pendiente fuera del plazo previsto. Jefatura aún puede aprobarla; quedará registrada la fecha real.</p>}
-      {status.data.status !== 'APROBADO' && month < monthNow() && <><p>Los registros incompletos se publican como pendientes, sin acreditar horas faltantes. El cierre congela también sus resultados; revisa las incidencias antes de aprobar.</p><label className="requirement"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)}/>Revisé los resultados y entiendo que no se podrán corregir.</label>{confirm && <Action path={`/reports/approve?month=${month}`}>Aprobar y publicar mes</Action>}</>}
+      {status.data.status !== 'APROBADO' && month < monthNow() && <><p>Los registros incompletos se publican como pendientes. El cierre congela las asistencias; las decisiones posteriores sobre justificaciones quedan como ajustes separados.</p><label className="requirement"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)}/>Revisé los resultados y entiendo que se conservará este cierre.</label>{confirm && <Action path={`/reports/approve?month=${month}`}>Aprobar y publicar mes</Action>}</>}
       {status.data.approved_at && <p>Aprobado: {date(status.data.approved_at)}</p>}
     </section><div className="document-preview"><div className="page-heading"><h2>Vista previa · {month}</h2><PdfDownload path={`/reports/pdf?month=${month}`} filename={`reporte-${month}.pdf`}/></div>
-      {data.map(r => <article className="list-item" key={r.id}><div><h3>{r.name}</h3><p>Reconocidas: {r.earned} h · Deducciones: {r.deductions} h · Pendientes: {r.pending}</p></div><span className="badge">Saldo: {r.hours} h</span></article>)}
+      {data.map(r => <article className="list-item" key={r.id}><div><h3>{r.name}</h3><p>Reconocidas: {r.earned} h · Deducciones: {r.deductions} h · Pendientes: {r.pending}</p>{r.closed && <p>Cierre original: {r.original_hours} h · Ajustes: {r.adjustment} h</p>}</div><span className="badge">Saldo: {r.hours} h</span></article>)}
     </div></>;
 }

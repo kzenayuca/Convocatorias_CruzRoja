@@ -5,7 +5,7 @@ Un espacio simple para consultar servicios y organizar el voluntariado.
 
 **React + TypeScript · Spring Boot · PostgreSQL**
 
-**Versión 2.4.0:** metas de horas para formación y graduados, inscripción directa por jefatura y responsable como función por servicio, conservando programación, PDF y el estilo visual.
+**Versión 2.5.0:** requisitos por convocatoria sin niveles, permisos de responsable por servicio, fotos de 10 MB y justificaciones con historial y ajustes de meses cerrados. Jefatura tiene un panel administrativo, sin meta ni penalizaciones personales.
 
 ## 🚀 Arranque local
 
@@ -51,9 +51,13 @@ Contraseña para todas las cuentas: **`convocatorias`**.
 
 Registro con aprobación de jefatura; perfil con botón **Modificar**; inscripción automática y **un total de voluntarios que incluye responsable, piloto y radioperador**. Voluntario admite graduados y personas en formación; el mínimo de graduados se exige dentro del total, no se suma. Responsable opcional asignado por jefatura. **Mi programación** solo muestra participaciones aceptadas; jefatura tiene la programación general. Cada servicio abre su página de detalle.
 
-Jefatura puede **inscribir directamente** a personas elegibles desde el detalle de una convocatoria publicada: exige verificación de requisitos y no permite saltarse cupos, nivel, habilitaciones, plazo ni cruces. La persona recibe una notificación y la inscripción aparece en su programación. Jefatura crea las convocatorias; un **responsable** es un voluntario graduado asignado a un servicio, no un rol global. El antiguo rol RECLUTADOR se migra a VOLUNTARIO conservando cuentas y asignaciones.
+Jefatura puede **buscar por nombre e inscribir directamente** a personas elegibles desde una convocatoria publicada: verifica conocimientos, cursos y demás requisitos propios del servicio; el sistema valida graduación, habilitaciones, cupos, plazo y cruces. **No hay niveles visibles ni restricciones por nivel.** La persona recibe una notificación y la inscripción aparece en su programación.
 
-Solicitudes de almacén, programación y reportes tienen vista digital y descarga **PDF real, sin impresión**. Fotos opcionales JPG/PNG hasta 50 MB, subidas por jefatura o el responsable asignado y visibles para cuentas activas. Administración configura dos **metas generales de horas acumuladas**, para formación y graduados, sin alterar saldos ni graduar automáticamente; se muestran en perfil y Mis servicios. No son metas mensuales ni individuales. Hay **8 convocatorias y 10 perfiles demo**; consulta [DOCS.md](DOCS.md#datos-demo).
+El **responsable** es un voluntario graduado activo ya inscrito y confirmado como voluntario general. Solo en su convocatoria tiene permisos para gestionar, subir fotos y confirmar asistencias. Cambiarlo o retirarlo requiere una acción explícita y auditada; conserva la inscripción, pero pierde los permisos. El contacto se actualiza al teléfono del responsable, visible solo a jefatura y participantes confirmados; de otro modo dice “Consultar a jefatura”. El antiguo rol RECLUTADOR sigue migrándose a VOLUNTARIO conservando cuentas e historial.
+
+**Solo jefatura descarga el PDF de programación.** Se conservan vista digital y PDF real de reportes y solicitudes de almacén según sus permisos. Fotos opcionales JPG/PNG hasta **10 MB**, botón **Adjuntar foto**, ofrecido al cerrar o después; solo jefatura o el responsable confirmado pueden subirlas. Administración configura dos metas generales de horas acumuladas para voluntarios en formación y graduados; **jefatura no tiene meta ni penalizaciones ni se justifica**. Hay **8 convocatorias y 10 perfiles demo**; consulta [DOCS.md](DOCS.md#datos-demo).
+
+La bandeja de justificaciones de jefatura permite consultar todos los usuarios y estados, filtrar, aprobar o rechazar con motivo y revisar el historial. Cada decisión registra autor, fecha y efecto en la penalización. Se pueden resolver después del cierre mensual: se añaden ajustes separados sin sobrescribir el cierre original ni otorgar horas no trabajadas.
 
 > **Prototipo local:** sin QR, recuperación de contraseña ni suspensiones automáticas. Conserva tus datos: no uses `docker compose down -v`. Reinicia el backend para aplicar las ampliaciones del esquema.
 

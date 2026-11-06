@@ -4,6 +4,7 @@ import { ErrorNotice } from './components';
 
 export function HoursProgress() {
   const { data, error } = useData<Row>('/attendance/progress', {}); const p = data.progress;
+  if (data.applicable === false) return null;
   const condition = data.condition === 'GRADUADO' ? 'Graduado' : 'En formación';
   return <section className="section-block hours-focus"><p className="eyebrow">Tu avance importa</p><h2>Mi meta de horas</h2><ErrorNotice message={error}/>{p && <>
     <p>Condición actual: <b>{condition}</b> · Meta general de saldo acumulado, no mensual.</p>

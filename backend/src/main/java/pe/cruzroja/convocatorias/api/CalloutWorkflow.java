@@ -12,10 +12,11 @@ public class CalloutWorkflow {
     public static final List<String> POSITIONS = List.of("RESPONSABLE", "SOCORRISTA", "GRADUADO", "FORMACION", "RADIOPERADOR", "PILOTO");
     private final JdbcTemplate db;
     public CalloutWorkflow(JdbcTemplate db) { this.db=db; }
-    public static final String FIELDS="id,title,start_at,end_at,deadline,kind,status,created_by,responsible_id,opened_at,closed_at,total_volunteers,socorrista_slots,graduate_slots,trainee_slots,radio_slots,pilot_slots,service_code,minimum_level,requirements,photo_uploaded_at";
+    public static final String FIELDS="id,title,start_at,end_at,deadline,kind,status,created_by,responsible_id,opened_at,closed_at,total_volunteers,socorrista_slots,graduate_slots,trainee_slots,radio_slots,pilot_slots,service_code,requirements,photo_uploaded_at";
     public Map<String,Object> locked(UUID id) { return one(db,"SELECT "+FIELDS+" FROM callouts WHERE id=? FOR UPDATE",id); }
     public boolean canEdit(Map<String,Object> c) {
-        return chief() || actor().graduated() && actor().role().equals("VOLUNTARIO") && actor().id().equals(c.get("responsible_id"));
+        return chief() || actor().graduated() && actor().role().equals("VOLUNTARIO") && actor().id().equals(c.get("responsible_id"))
+            && db.queryForObject("SELECT count(*) FROM enrollments WHERE callout_id=? AND volunteer_id=? AND position='RESPONSABLE' AND status='CONFIRMADA'",Integer.class,c.get("id"),actor().id())==1;
     }
     public boolean canOperate(Map<String,Object> c) {
         return canEdit(c);
@@ -78,9 +79,8 @@ public class CalloutWorkflow {
     }
     public boolean qualified(Map<String,Object> c,UUID user,String position) {
         if(!POSITIONS.contains(position) || (!Set.of("GRADUADO","FORMACION").contains(position) && capacity(c,position)==0)) return false;
-        var p=one(db,"SELECT u.status,u.role,u.graduated,p.training_level,p.radio_qualified,p.pilot_qualified FROM users u JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.id=?",user);
-        var levels=List.of("BASICO","INTERMEDIO","AVANZADO");
-        if(!"ACTIVO".equals(p.get("status")) || levels.indexOf(p.get("training_level"))<levels.indexOf(c.get("minimum_level"))) return false;
+        var p=one(db,"SELECT u.status,u.role,u.graduated,p.radio_qualified,p.pilot_qualified FROM users u JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.id=?",user);
+        if(!"ACTIVO".equals(p.get("status")) || !"VOLUNTARIO".equals(p.get("role"))) return false;
         if(!Set.of("SOCORRISTA","FORMACION").contains(position) && !Boolean.TRUE.equals(p.get("graduated"))) return false;
         return switch(position) {
             case "RESPONSABLE" -> Boolean.TRUE.equals(p.get("graduated")) && "VOLUNTARIO".equals(p.get("role"));
@@ -124,6 +124,8 @@ public class CalloutWorkflow {
     }
     public void assignResponsible(Map<String,Object> c) {
         var users=db.queryForList("SELECT volunteer_id FROM enrollments WHERE callout_id=? AND position='RESPONSABLE' AND status='CONFIRMADA'",c.get("id"));
-        db.update("UPDATE callouts SET responsible_id=? WHERE id=?",users.isEmpty()?null:users.get(0).get("volunteer_id"),c.get("id"));
+        Object next=users.isEmpty()?null:users.get(0).get("volunteer_id");
+        if(!Objects.equals(c.get("responsible_id"),next)) db.update("INSERT INTO responsible_history(id,callout_id,previous_user_id,next_user_id,changed_by,changed_at,reason) VALUES (?,?,?,?,?,?,?)",UUID.randomUUID(),c.get("id"),c.get("responsible_id"),next,actor().id(),now(),"Actualización por revisión de inscripción, cuenta o habilitaciones");
+        db.update("UPDATE callouts SET responsible_id=? WHERE id=?",next,c.get("id"));
     }
 }

@@ -25,7 +25,7 @@ public class AccountsController {
                                @NotBlank @Size(min=8,max=72) String password,
                                @NotBlank @Size(max=30) String phone) { }
     public record Phone(@NotBlank @Size(max=30) String phone) { }
-    public record Review(@NotBlank String role, @NotBlank String level, boolean graduated,
+    public record Review(@NotBlank String role, boolean graduated,
                          @NotBlank String status, @NotBlank @Size(max=2000) String comment,
                          boolean radioQualified, boolean pilotQualified) { }
     public record Decision(boolean approved, @NotBlank @Size(max=2000) String comment) { }
@@ -39,7 +39,7 @@ public class AccountsController {
         return Map.of("mensaje", "Solicitud registrada. Jefatura debe activar tu cuenta antes de iniciar sesión.");
     }
 
-    private static final String PROFILES = "SELECT u.id,u.name,u.surnames,u.email,u.role,u.graduated,u.status,u.occupation,u.review_comment,p.document,p.phone,p.training_level,p.availability,p.radio_qualified,p.pilot_qualified FROM users u LEFT JOIN volunteer_profiles p ON p.user_id=u.id ";
+    private static final String PROFILES = "SELECT u.id,u.name,u.surnames,u.email,u.role,u.graduated,u.status,u.occupation,u.review_comment,p.document,p.phone,p.availability,p.radio_qualified,p.pilot_qualified FROM users u LEFT JOIN volunteer_profiles p ON p.user_id=u.id ";
 
     @GetMapping("/profile")
     public Map<String, Object> profile() { return one(db, PROFILES + " WHERE u.id=?", actor().id()); }
@@ -84,16 +84,14 @@ public class AccountsController {
     public void review(@PathVariable UUID id, @Valid @RequestBody Review r) {
         require(chief(), "Solo jefatura administra cuentas.");
         valid(Set.of("VOLUNTARIO", "JEFATURA").contains(r.role()), "Rol no válido. Responsable es una función por servicio, no un rol de cuenta.");
-        valid(Set.of("BASICO", "INTERMEDIO", "AVANZADO").contains(r.level()), "Nivel no válido.");
         valid(Set.of("ACTIVO", "PENDIENTE", "RECHAZADO", "INACTIVO", "SUSPENDIDO").contains(r.status()), "Estado no válido.");
         // Mismo orden de bloqueo que la aprobación de inscripciones: servicio antes del perfil.
         var affected = db.queryForList("SELECT DISTINCT callout_id FROM enrollments WHERE volunteer_id=? ORDER BY callout_id", id);
         for (var c : affected) one(db, "SELECT id FROM callouts WHERE id=? FOR UPDATE", c.get("callout_id"));
-        var old = one(db, "SELECT u.*,p.training_level FROM users u LEFT JOIN volunteer_profiles p ON p.user_id=u.id WHERE u.id=? FOR UPDATE OF u", id);
-        valid(!r.level().equals("BASICO") || Objects.equals(old.get("training_level"), "BASICO"), "No se puede reducir el nivel a BASICO.");
+        one(db, "SELECT id FROM users WHERE id=? FOR UPDATE", id);
         valid(!id.equals(actor().id()) || r.status().equals("ACTIVO") && r.role().equals("JEFATURA"), "No puedes retirar tu propio acceso de jefatura.");
         db.update("UPDATE users SET role=?,graduated=?,status=?,review_comment=? WHERE id=?", r.role(), r.graduated(), r.status(), r.comment(), id);
-        db.update("UPDATE volunteer_profiles SET training_level=?,radio_qualified=?,pilot_qualified=? WHERE user_id=?", r.level(),r.radioQualified(),r.pilotQualified(),id);
+        db.update("UPDATE volunteer_profiles SET radio_qualified=?,pilot_qualified=? WHERE user_id=?",r.radioQualified(),r.pilotQualified(),id);
         for (var entry : affected) {
             var c=workflow.locked(id(entry,"callout_id"));
             if(!time(c,"start_at").isAfter(now())) continue;

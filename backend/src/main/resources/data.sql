@@ -115,3 +115,9 @@ UPDATE callouts c SET total_volunteers=GREATEST(1,
     (SELECT count(*)::int FROM enrollments e WHERE e.callout_id=c.id AND e.position='RESPONSABLE' AND e.status='CONFIRMADA'),
     (SELECT count(*)::int FROM enrollments e WHERE e.callout_id=c.id AND e.status='CONFIRMADA'))
 WHERE total_volunteers IS NULL;
+
+-- Retira únicamente los textos predeterminados de nivel; no cambia requisitos personalizados.
+UPDATE callouts SET requirements='Conocimientos de evacuación y puntualidad.'
+WHERE id='10000000-0000-0000-0000-000000000004' AND requirements='Nivel básico y puntualidad.';
+UPDATE callouts SET requirements='Conocimientos de primeros auxilios y equipo personal.'
+WHERE id='10000000-0000-0000-0000-000000000006' AND requirements='Nivel avanzado y equipo personal.';

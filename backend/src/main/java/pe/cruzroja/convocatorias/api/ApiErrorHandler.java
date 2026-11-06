@@ -16,7 +16,7 @@ public class ApiErrorHandler {
     }
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     ResponseEntity<Map<String,String>> upload() {
-        return ResponseEntity.status(413).body(Map.of("mensaje","El archivo supera el tamaño permitido."));
+        return ResponseEntity.status(413).body(Map.of("mensaje","La foto supera el límite de 10 MB."));
     }
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     ResponseEntity<Map<String, String>> status(org.springframework.web.server.ResponseStatusException error) {

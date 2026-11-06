@@ -247,3 +247,27 @@ UPDATE users SET role='VOLUNTARIO' WHERE role='RECLUTADOR';
 ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS assigned_by UUID REFERENCES users(id);
 ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
 ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS requirements_accepted BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Niveles antiguos se conservan solo como datos históricos; no se usan en permisos o elegibilidad.
+ALTER TABLE volunteer_profiles ALTER COLUMN training_level SET DEFAULT 'BASICO';
+ALTER TABLE callouts ALTER COLUMN minimum_level SET DEFAULT 'BASICO';
+CREATE TABLE IF NOT EXISTS responsible_history (
+    id UUID PRIMARY KEY, callout_id UUID NOT NULL REFERENCES callouts(id),
+    previous_user_id UUID REFERENCES users(id), next_user_id UUID REFERENCES users(id),
+    changed_by UUID NOT NULL REFERENCES users(id), changed_at TIMESTAMP NOT NULL, reason TEXT NOT NULL
+);
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS resolved_by UUID REFERENCES users(id);
+ALTER TABLE justifications ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
+CREATE TABLE IF NOT EXISTS justification_resolutions (
+    id UUID PRIMARY KEY, justification_id UUID NOT NULL REFERENCES justifications(id),
+    previous_status VARCHAR(30) NOT NULL, status VARCHAR(30) NOT NULL,
+    resolved_by UUID NOT NULL REFERENCES users(id), resolved_at TIMESTAMP NOT NULL,
+    comment TEXT NOT NULL, deduction_before NUMERIC(12,4) NOT NULL, deduction_after NUMERIC(12,4) NOT NULL
+);
+-- Ajustes anexos: las filas originales del cierre nunca se reescriben.
+CREATE TABLE IF NOT EXISTS monthly_report_adjustments (
+    id UUID PRIMARY KEY, month DATE NOT NULL REFERENCES monthly_reports(month),
+    user_id UUID NOT NULL REFERENCES users(id), resolution_id UUID NOT NULL UNIQUE REFERENCES justification_resolutions(id),
+    deduction_delta NUMERIC(12,4) NOT NULL, created_at TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS monthly_adjustment_user ON monthly_report_adjustments(month,user_id);

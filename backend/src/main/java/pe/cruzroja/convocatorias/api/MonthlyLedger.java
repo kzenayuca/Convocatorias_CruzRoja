@@ -15,5 +15,5 @@ public class MonthlyLedger {
     public boolean closed(YearMonth month) {
         return db.queryForObject("SELECT count(*) FROM monthly_reports WHERE month=? AND status='APROBADO'",Integer.class,month.atDay(1))>0;
     }
-    public void ensureOpen(Map<String,Object> c) { valid(!closed(c),"El mes ya fue aprobado y no admite cambios de asistencia ni justificaciones."); }
+    public void ensureOpen(Map<String,Object> c) { valid(!closed(c),"El mes ya fue aprobado y no admite cambios de asistencia. Las justificaciones se registran como ajustes auditados."); }
 }
