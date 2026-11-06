@@ -219,7 +219,9 @@ class BrowserTest {
         fill("proposedReplacementName","Lucía Vega"); fill("reason","Documento de sustento para solicitar reemplazo"); click("Solicitar reemplazo a Jefatura");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".save-feedback")));
         var enrollmentSummary=By.xpath("//details[summary[contains(.,'"+title+"')]]/summary");
-        wait.until(ExpectedConditions.elementToBeClickable(enrollmentSummary)).click();
+        var summary=wait.until(ExpectedConditions.elementToBeClickable(enrollmentSummary));
+        ((JavascriptExecutor)browser).executeScript("arguments[0].scrollIntoView({block:'center',behavior:'instant'})",summary);
+        summary.click();
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Solicitud pendiente de gestión"));
         click("Consultar solicitud de reemplazo →"); wait.until(d -> d.getCurrentUrl().contains("/justifications?request=") && d.findElement(By.tagName("main")).getText().contains("Lucía Vega"));
         String requestUrl=browser.getCurrentUrl(); assertTrue(browser.findElements(By.name("replacementUser")).isEmpty());
@@ -313,4 +315,28 @@ class BrowserTest {
         assertTrue(browser.findElements(By.xpath("//button[text()='Adjuntar foto']")).isEmpty());
         assertTrue(browser.findElements(By.xpath("//summary[text()='Revisión de asistencia']")).isEmpty());
     }
+
+    @Test
+    void chiefCreatesCalloutDraft() {
+        // 1. Iniciar sesión como jefatura@demo.pe
+        //    (reutilizar el helper de login que ya existe en BrowserTest)
+        // 2. Abrir "Convocatorias"
+        // 3. Clic en "Nueva convocatoria"
+        // 4. Completar los campos obligatorios
+        var title = "Prueba Lab 6 " + System.currentTimeMillis();
+        //    Categoría: Externo (E)
+        //    Título: title
+        //    Descripción, tipo de servicio, área, lugar y requisitos
+        //    Total de voluntarios: 1
+        //    Mínimo de graduados, radioperadores y pilotos: 0
+        //    Inicio y fin: bloque libre (reutilizar la búsqueda de fecha libre)
+        //    Fecha límite: anterior al inicio
+        // 5. Clic en "Crear borrador"
+        // 6. Esperar a que aparezca la página de detalle
+        // 7. Verificar título y estado
+        //    assertTrue(texto de la página contiene title);
+        //    assertTrue(texto de la página contiene "Borrador");
+        screenshot("lab6-convocatoria.png");
+    }
+
 }
