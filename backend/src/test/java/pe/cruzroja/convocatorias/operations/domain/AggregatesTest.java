@@ -69,4 +69,8 @@ class AggregatesTest {
         assertDoesNotThrow(()->new HourTargets(new BigDecimal("120"),new BigDecimal("200")));
         assertThrows(IllegalArgumentException.class,()->new HourTargets(BigDecimal.ZERO,BigDecimal.TEN));
     }
+
+    @Test void hourTargetsAcceptTheMinimumPositiveValue() {
+        assertDoesNotThrow(()->new HourTargets(new BigDecimal("0.01"),new BigDecimal("100000.00")));
+    }
 }

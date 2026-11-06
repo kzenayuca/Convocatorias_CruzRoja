@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
+import pe.cruzroja.convocatorias.administration.infrastructure.JdbcAdministrationRepository;
 
 /** Solo contra una base explícita de pruebas; no usa el volumen local habitual. */
 @EnabledIfEnvironmentVariable(named="TEST_DB_URL",matches=".+")
@@ -933,4 +935,13 @@ class WorkflowTest {
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM attendance_records WHERE id=?",String.class,a));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='REVISION' AND recipient_id=?",Integer.class,"/services?review="+second,volunteer));
     }
+
+    @Test @Transactional void administrationSettingsReadsBothTargets() {
+        db.update("UPDATE volunteer_hour_targets SET hours=12.00 WHERE condition='FORMACION'");
+        db.update("UPDATE volunteer_hour_targets SET hours=24.00 WHERE condition='GRADUADO'");
+        var settings=new JdbcAdministrationRepository(db).settings();
+        assertEquals(12.0,((Number)settings.get("training_hours")).doubleValue(),0.001);
+        assertEquals(24.0,((Number)settings.get("graduate_hours")).doubleValue(),0.001);
+    }
+
 }
