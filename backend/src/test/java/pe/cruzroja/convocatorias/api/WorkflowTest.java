@@ -6,12 +6,16 @@ import java.net.http.*;
 import java.time.*;
 import java.util.*;
 import com.fasterxml.jackson.databind.*;
+
+import pe.cruzroja.convocatorias.membership.infrastructure.JdbcVolunteerRepository;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Solo contra una base explícita de pruebas; no usa el volumen local habitual. */
 @EnabledIfEnvironmentVariable(named="TEST_DB_URL",matches=".+")
@@ -933,4 +937,15 @@ class WorkflowTest {
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM attendance_records WHERE id=?",String.class,a));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='REVISION' AND recipient_id=?",Integer.class,"/services?review="+second,volunteer));
     }
+    @Test
+    @Transactional
+    void volunteerProfileReadsFixtureFromIsolatedDatabase() {
+        var repository = new JdbcVolunteerRepository(db);
+        var profile = repository.profile(volunteer);
+
+        assertEquals(volunteer, profile.get("id"));
+        assertEquals("Ana Torres", profile.get("name"));
+        assertEquals("voluntario@demo.pe", profile.get("email"));
+    }
+
 }

@@ -69,4 +69,15 @@ class AggregatesTest {
         assertDoesNotThrow(()->new HourTargets(new BigDecimal("120"),new BigDecimal("200")));
         assertThrows(IllegalArgumentException.class,()->new HourTargets(BigDecimal.ZERO,BigDecimal.TEN));
     }
+    // Katherin add
+
+    @Test
+    void volunteerRejectsServiceFunctionAsAccountRole() {
+        assertThrows(IllegalArgumentException.class,
+            () -> new Volunteer(UUID.randomUUID(), "RESPONSABLE", "ACTIVO", true, true, true));
+    }
 }
+
+
+
+
