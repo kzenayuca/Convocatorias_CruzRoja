@@ -1,6 +1,10 @@
 package pe.cruzroja.convocatorias.operations.application;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import java.time.*;
 import java.util.*;
@@ -10,6 +14,10 @@ import pe.cruzroja.convocatorias.membership.application.*;
 import pe.cruzroja.convocatorias.communications.application.*;
 import pe.cruzroja.convocatorias.communications.domain.Announcement;
 import pe.cruzroja.convocatorias.operations.domain.Justification;
+import java.math.BigDecimal;
+import pe.cruzroja.convocatorias.administration.application.AdministrationRepository;
+import pe.cruzroja.convocatorias.administration.application.AdministrationUseCases;
+import pe.cruzroja.convocatorias.administration.domain.HourTargets;
 
 /** Ejecuta los casos de uso con puertos falsos: sin HTTP, Spring, JDBC ni PostgreSQL. */
 class UseCasesTest {
@@ -60,5 +68,18 @@ class UseCasesTest {
         when(context.actor()).thenReturn(new Actor(chief,"JEFATURA",false)); var repo=mock(NoticeRepository.class); when(repo.recipients("TODOS")).thenReturn(List.of(user));
         new NoticesUseCases(repo,context,notices).publish(new Announcement("Aviso","Reunión de equipo","TODOS"));
         verify(repo).save(any(UUID.class),any(Announcement.class),eq(chief)); verify(notices).publish(eq(user),eq("COMUNICADO"),contains("Reunión"),eq("/notifications"));
+    }
+
+    @Test void chiefUpdatesHourTargets() {
+        var repository=mock(AdministrationRepository.class); when(context.actor()).thenReturn(new Actor(chief,"JEFATURA",true));
+        var targets=new HourTargets(new BigDecimal("12.00"),new BigDecimal("24.00"));
+        new AdministrationUseCases(repository,context,notices).update(targets);
+        verify(repository).save(targets,chief,LocalDateTime.of(2030,1,1,8,0));
+    }
+    @Test void volunteerCannotUpdateHourTargets() {
+        var repository=mock(AdministrationRepository.class); when(context.actor()).thenReturn(new Actor(user,"VOLUNTARIO",false));
+        var targets=new HourTargets(new BigDecimal("12.00"),new BigDecimal("24.00"));
+        assertThrows(AccessDenied.class,()->new AdministrationUseCases(repository,context,notices).update(targets));
+        verifyNoInteractions(repository);
     }
 }
