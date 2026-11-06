@@ -61,4 +61,30 @@ class UseCasesTest {
         new NoticesUseCases(repo,context,notices).publish(new Announcement("Aviso","Reunión de equipo","TODOS"));
         verify(repo).save(any(UUID.class),any(Announcement.class),eq(chief)); verify(notices).publish(eq(user),eq("COMUNICADO"),contains("Reunión"),eq("/notifications"));
     }
+    @Test
+    void cancellationPersistsReasonAndNotifiesApplicant() {
+        var repository = mock(CalloutRepository.class);
+        var enrollments = mock(EnrollmentRepository.class);
+
+        when(enrollments.applicants(callout))
+            .thenReturn(List.of(Map.of("volunteer_id", user)));
+
+        var workflow = new CalloutWorkflow(
+            repository, enrollments, context, notices);
+
+        var calloutData = new HashMap<String, Object>();
+        calloutData.put("id", callout);
+        calloutData.put("title", "Guardia de prueba");
+        calloutData.put("created_by", chief);
+        calloutData.put("responsible_id", chief);
+
+        workflow.cancel(calloutData, "Cambio de fecha");
+
+        verify(repository).cancel(callout, "Cambio de fecha");
+        verify(notices).publish(
+            eq(user),
+            eq("CONVOCATORIA"),
+            contains("Cambio de fecha"),
+            eq("/callouts/" + callout));
+    }
 }
