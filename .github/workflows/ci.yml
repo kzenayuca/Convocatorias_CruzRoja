@@ -1,4 +1,4 @@
-name: CI básico
+name: CI · arquitectura y regresión
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-      - name: JUnit y procesos con PostgreSQL aislado
+      - name: Arquitectura, dominio, casos de uso y regresión con PostgreSQL aislado
         run: bash ./mvnw -B -ntp test
       - name: Conservar ejecución y cobertura
         if: always()

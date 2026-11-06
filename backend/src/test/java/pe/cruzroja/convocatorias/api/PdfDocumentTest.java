@@ -1,4 +1,5 @@
 package pe.cruzroja.convocatorias.api;
+import pe.cruzroja.convocatorias.shared.web.PdfDocument;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.*;

@@ -6,7 +6,8 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import pe.cruzroja.convocatorias.domain.GraduationSettings;
+import pe.cruzroja.convocatorias.operations.application.GraduationSettings;
+import pe.cruzroja.convocatorias.operations.application.GraduationService;
 
 @ExtendWith(MockitoExtension.class)
 class GraduationServiceTest {

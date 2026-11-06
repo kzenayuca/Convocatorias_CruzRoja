@@ -5,7 +5,7 @@ Un espacio simple para consultar servicios y organizar el voluntariado.
 
 **React + TypeScript · Spring Boot · PostgreSQL**
 
-**Versión 2.5.0:** requisitos por convocatoria sin niveles, permisos de responsable por servicio, fotos de 10 MB y justificaciones con historial y ajustes de meses cerrados. Jefatura tiene un panel administrativo, sin meta ni penalizaciones personales.
+**Versión 2.6.0:** aplicación web con backend de **monolito modular + DDD + Clean Architecture**, conservando las reglas, pantallas, API y datos de la versión anterior. [Ver arquitectura y contextos](ARCHITECTURE.md).
 
 ## 🚀 Arranque local
 
@@ -19,6 +19,7 @@ docker compose up -d
 **2. Backend** — en otra terminal, desde la raíz:
 ```powershell
 cd backend
+mvn clean test
 mvn spring-boot:run
 ```
 
@@ -27,7 +28,7 @@ mvn spring-boot:run
 cd frontend
 npm run dev
 ```
-La primera vez, ejecuta `npm install` dentro de `frontend` antes de iniciarlo.
+La primera vez, ejecuta `npm ci` dentro de `frontend` antes de iniciarlo. El `clean` inicial del backend elimina clases compiladas de paquetes anteriores, no datos de PostgreSQL.
 
 | Servicio | Dirección |
 |---|---|
@@ -74,7 +75,7 @@ npm ci
 npm run build
 # Backend (pruebas unitarias; para integración ver DOCS.md)
 cd ../backend
-mvn test
+mvn clean test
 ```
 
 Cobertura: `backend/target/site/jacoco/index.html`. Ejecución JUnit: `backend/target/surefire-reports/`.

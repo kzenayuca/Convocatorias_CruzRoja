@@ -226,6 +226,8 @@ class WorkflowTest {
         body.put("kind","SERVICIO"); body.put("area","Salud"); body.put("contact","Encargado de guardia"); body.put("code",code); body.put("serviceType","Guardia");
         UUID id=UUID.fromString(admin.ok("/callouts","POST",body).get("id").asText());
         assertEquals(3,admin.ok("/callouts/"+id,"GET",null).get("planned_hours").asDouble());
+        var exposed=OffsetDateTime.parse(admin.ok("/callouts/"+id,"GET",null).get("start_at").asText());
+        assertEquals(start,exposed.toLocalDateTime()); assertEquals(ZoneOffset.ofHours(-5),exposed.getOffset());
         assertEquals(409,admin.request("/callouts","POST",body).statusCode());
         admin.ok("/callouts/"+id+"/status","POST",Map.of("status","ABIERTA"));
         assertTrue(db.queryForObject("SELECT count(*) FROM notifications WHERE message LIKE ?",Integer.class,"%Servicio creado por API%")>0);
@@ -384,6 +386,7 @@ class WorkflowTest {
         body.put("code",code); admin.ok("/callouts/"+id,"PUT",body);
         body.put("code","NEW-"+UUID.randomUUID()); admin.ok("/callouts/"+id,"PUT",body);
         body.put("code",code.toLowerCase()); assertEquals(409,admin.request("/callouts","POST",body).statusCode());
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM callouts WHERE lower(service_code)=lower(?)",Integer.class,code),"El código histórico no deja un borrador parcial al fallar su reserva.");
         assertEquals(2,db.queryForObject("SELECT count(*) FROM service_code_history WHERE callout_id=?",Integer.class,id));
         assertTrue(admin.ok("/service-codes","GET",null).toString().contains(code.toUpperCase(Locale.ROOT)));
         assertEquals(403,recruiter.request("/service-codes","GET",null).statusCode());

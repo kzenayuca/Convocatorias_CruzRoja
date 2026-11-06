@@ -1,4 +1,5 @@
 package pe.cruzroja.convocatorias.domain;
+import pe.cruzroja.convocatorias.operations.domain.ServiceRules;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.*;

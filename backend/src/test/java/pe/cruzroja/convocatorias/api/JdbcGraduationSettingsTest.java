@@ -1,4 +1,5 @@
 package pe.cruzroja.convocatorias.api;
+import pe.cruzroja.convocatorias.operations.infrastructure.JdbcGraduationSettings;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;

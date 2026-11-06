@@ -1,4 +1,5 @@
 package pe.cruzroja.convocatorias.domain;
+import pe.cruzroja.convocatorias.operations.domain.TeamCapacity;
 
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;

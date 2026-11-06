@@ -1,10 +1,12 @@
-# Documentación esencial · versión 2.5.0
+# Documentación esencial · versión 2.6.0
 
 ## Estado real
 
 Aplicación local persistente: cuentas, perfiles, convocatorias, inscripciones, programación, asistencia, horas, justificaciones, materiales y notificaciones. No se usa `localStorage` como fuente de inscripciones.
 
 Se conserva el diseño: colores, tarjetas y barra lateral; se añaden espacios, páginas de detalle y secciones de gestión plegables. No se ha separado Selenium en otro repositorio ni implementado el Lab 6.
+
+El backend ahora es un **monolito modular con DDD y Clean Architecture**: contextos Voluntarios, Operaciones, Administración y Comunicaciones, con dominio/aplicación Java puros y adaptadores web/JDBC. Los controladores no contienen SQL ni reglas de negocio. Los límites de dependencia se comprueban con ArchUnit. Diseño, contextos, puertos, agregados y decisiones: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Reglas y permisos
 
@@ -69,6 +71,8 @@ La versión 2.5 conserva `training_level` y `minimum_level` solo internamente po
 
 Reinicia el backend para aplicar. **No usar `docker compose down -v`** para actualizar.
 
+La versión 2.6 reorganiza el código sin modificar `schema.sql` ni `data.sql`: las rutas y respuestas JSON siguen siendo compatibles con React y se conserva la política funcional de la versión 2.5. Al actualizar, ejecuta **`mvn clean test` una vez** para retirar clases compiladas de los paquetes antiguos; después inicia con `mvn spring-boot:run`. No borres la base de datos.
+
 ## Datos demo
 
 **8 convocatorias, 10 perfiles y 17 inscripciones base.** En una base nueva María aparece como responsable donde estaba configurada; una migrada conserva sus asignaciones. Fechas fijas desde la primera carga, sin vaciar datos.
@@ -89,11 +93,11 @@ Contraseña demo: `convocatorias`. Principales: `voluntario@demo.pe`, `reclutado
 
 - Inicio: [README.md](README.md). Docker Compose inicia PostgreSQL en `127.0.0.1:5433` y Adminer. Spring no carga `.env` de Compose; revisar `DB_URL/DB_USER/DB_PASSWORD` del entorno si hay conflictos. No borrar volúmenes para cambiar credenciales.
 - Frontend: `npm ci` y `npm run build` comprueban TypeScript y Vite; `npm run dev` inicia desarrollo.
-- Desde backend: `mvn test` ejecuta JUnit y Mockito. JaCoCo genera `target/site/jacoco/index.html` y XML. Surefire genera `target/surefire-reports/`.
+- Desde backend: `mvn clean test` ejecuta JUnit, Mockito y ArchUnit. JaCoCo genera `target/site/jacoco/index.html` y XML. Surefire genera `target/surefire-reports/`. Arquitectura/dominio/casos de uso funcionan sin base; las pruebas HTTP requieren `TEST_DB_URL`.
 - Pruebas HTTP/DB solo se habilitan con `TEST_DB_URL` explícita hacia una **base aislada exclusiva de pruebas**. Crean datos ficticios; nunca apuntar a datos reales. `TEST_DB_USER/TEST_DB_PASSWORD` opcionales.
 - Selenium sigue aquí como regresión existente, **no se ha empezado el Lab 6 multirepo**. Con API/frontend aislados iniciados: `mvn "-Dtest=BrowserTest" "-De2e.url=http://localhost:5173" test`. Chrome local o `-Dselenium.url=http://localhost:4444` remoto. Modifica cuentas demo y crea servicios de prueba.
 - CI: JUnit/PostgreSQL efímero, cobertura como artefacto, construcción frontend y regresión Selenium. No usa volumen local.
-- Base técnica Lab 5: `domain` sin Spring; caso de uso `application/GraduationService`; puerto `GraduationSettings` y adaptador JDBC. Pruebas de invariantes, Mockito y del adaptador. No se afirma haber aplicado TDD retroactivamente ni completado el trabajo de los seis integrantes.
+- Base técnica Lab 5: dominios sin Spring; `operations/application/GraduationService`, puerto `GraduationSettings` y adaptador JDBC. Pruebas de invariantes de agregados, casos de uso con puertos falsos, arquitectura, transacciones y adaptadores. No se afirma haber aplicado TDD retroactivamente ni completado el trabajo de los seis integrantes.
 
 ## Límites
 
