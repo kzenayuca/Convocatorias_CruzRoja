@@ -65,6 +65,16 @@ class BrowserTest {
     void fill(String name,String value) {
         var input=browser.findElement(By.name(name)); input.clear(); input.sendKeys(value);
     }
+    void expand(String summary) {
+        var locator=By.xpath("//details[summary[normalize-space(.)='"+summary+"']]");
+        var details=wait.until(ExpectedConditions.presenceOfElementLocated(locator));
+        if(!"true".equals(details.getDomProperty("open"))) {
+            var toggle=details.findElement(By.tagName("summary"));
+            ((JavascriptExecutor)browser).executeScript("arguments[0].scrollIntoView({block:'center'})",toggle);
+            toggle.click();
+        }
+        wait.until(d -> "true".equals(d.findElement(locator).getDomProperty("open")));
+    }
     void screenshot(String filename) {
         ((JavascriptExecutor)browser).executeScript("window.scrollTo(0,0)");
         try { java.nio.file.Files.write(java.nio.file.Path.of("target",filename),((TakesScreenshot)browser).getScreenshotAs(OutputType.BYTES)); }
@@ -99,6 +109,7 @@ class BrowserTest {
         click("Mi perfil"); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Administración institucional"));
         assertTrue(browser.findElements(By.xpath("//h2[text()='Mi meta de horas']")).isEmpty());
         click("Administración");
+        expand("Editar metas de horas");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("trainingHours")));
         fill("trainingHours","120"); fill("graduateHours","200"); click("Guardar metas generales");
         wait.until(d -> d.findElement(By.tagName("main")).getText().contains("120 h") && d.findElement(By.tagName("main")).getText().contains("200 h"));
@@ -205,6 +216,9 @@ class BrowserTest {
         wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//summary[contains(.,'"+title+"')]"))).click();
         wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//details[summary[contains(.,'"+title+"')]]//summary[text()='Solicitar cancelación con reemplazo']"))).click();
         fill("proposedReplacementName","Lucía Vega"); fill("reason","Documento de sustento para solicitar reemplazo"); click("Solicitar reemplazo a Jefatura");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".save-feedback")));
+        var enrollmentSummary=By.xpath("//details[summary[contains(.,'"+title+"')]]/summary");
+        wait.until(ExpectedConditions.elementToBeClickable(enrollmentSummary)).click();
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Solicitud pendiente de gestión"));
         click("Consultar solicitud de reemplazo →"); wait.until(d -> d.getCurrentUrl().contains("/justifications?request=") && d.findElement(By.tagName("main")).getText().contains("Lucía Vega"));
         String requestUrl=browser.getCurrentUrl(); assertTrue(browser.findElements(By.name("replacementUser")).isEmpty());
@@ -232,6 +246,7 @@ class BrowserTest {
     @Test void graduatesRegisterAnAnnualCycleAndBothReportPeriodsAreAvailable() {
         var email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]"))); email.clear(); email.sendKeys("maria@demo.pe"); click("Iniciar sesión");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome"))); click("Mi perfil");
+        expand("Registrar o renovar ciclo anual");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("year")));
         int year=java.time.LocalDate.now(java.time.ZoneId.of("America/Lima")).getYear(); fill("year",String.valueOf(year)); click("Registrar inscripción anual");
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),year+" · Inscrito"));
@@ -271,6 +286,8 @@ class BrowserTest {
         wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//summary[text()='Asignar responsable · jefatura']"))).click();
         wait.until(d -> d.findElements(By.cssSelector("select[name=userId] option")).size()>1);
         new Select(browser.findElement(By.name("userId"))).selectByValue(maria); click("Asignar responsable");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".save-feedback")));
+        expand("Responsable asignado · jefatura");
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Ya hay un responsable"));
         assertTrue(browser.findElements(By.xpath("//button[text()='Asignar responsable']")).isEmpty());
         click("Salir"); email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
