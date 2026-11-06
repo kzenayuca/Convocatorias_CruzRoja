@@ -61,4 +61,51 @@ class UseCasesTest {
         new NoticesUseCases(repo,context,notices).publish(new Announcement("Aviso","Reunión de equipo","TODOS"));
         verify(repo).save(any(UUID.class),any(Announcement.class),eq(chief)); verify(notices).publish(eq(user),eq("COMUNICADO"),contains("Reunión"),eq("/notifications"));
     }
+    @Test
+    void attendanceConfirmationPersistsCalculatedHoursOnce() {
+        // Arrange: servicio de 09:00 a 11:00 ya terminado y asistencia pendiente
+        var repository = mock(AttendanceRepository.class);
+        var workflow = mock(CalloutWorkflow.class);
+        UUID attendance = UUID.randomUUID();
+        var start = LocalDateTime.of(2029, 12, 31, 9, 0);
+        var end = start.plusHours(2);
+        when(repository.find(attendance, false)).thenReturn(new HashMap<>(Map.of(
+            "id", attendance, "callout_id", callout, "volunteer_id", user,
+            "status", "PENDIENTE_REVISION", "policy_version", 2)));
+        when(workflow.locked(callout)).thenReturn(Map.of(
+            "id", callout, "title", "Guardia", "status", "CERRADA",
+            "start_at", start, "end_at", end, "deadline", start.minusDays(1)));
+        when(repository.reviews(attendance)).thenReturn(List.of());
+        when(repository.trainingVolunteer(user)).thenReturn(false);
+        var useCase = new AttendanceUseCases(repository, mock(EnrollmentRepository.class), mock(CalloutRepository.class), workflow, mock(ServiceMaintenance.class), mock(MonthlyLedger.class), mock(GraduationSettings.class), mock(ImageInspector.class), context, notices);
+        // Act
+        useCase.confirm(attendance,
+            new AttendanceUseCases.Confirmation(start, end, null, "Marcas verificadas"));
+        // Assert: se guardan exactamente las 2 horas calculadas, una sola vez
+        verify(repository).confirm(
+            eq(attendance), eq(start), eq(end), eq(2.0), eq(user), eq("Marcas verificadas"));
+    }
+    @Test
+    void invalidAttendanceMarksAreNotPersisted() {
+        // Arrange
+        var repository = mock(AttendanceRepository.class);
+        var workflow = mock(CalloutWorkflow.class);
+        UUID attendance = UUID.randomUUID();
+        var start = LocalDateTime.of(2029, 12, 31, 9, 0);
+        var end = start.plusHours(2);
+        when(repository.find(attendance, false)).thenReturn(new HashMap<>(Map.of(
+            "id", attendance, "callout_id", callout, "volunteer_id", user,
+            "status", "PENDIENTE_REVISION", "policy_version", 2)));
+        when(workflow.locked(callout)).thenReturn(Map.of(
+            "id", callout, "title", "Guardia", "status", "CERRADA",
+            "start_at", start, "end_at", end, "deadline", start.minusDays(1)));
+        var useCase = new AttendanceUseCases(repository, mock(EnrollmentRepository.class), mock(CalloutRepository.class), workflow, mock(ServiceMaintenance.class), mock(MonthlyLedger.class), mock(GraduationSettings.class), mock(ImageInspector.class), context, notices);
+        // Act + Assert: marcas fuera del horario del servicio
+        assertThrows(IllegalArgumentException.class,
+            () -> useCase.confirm(attendance,
+                new AttendanceUseCases.Confirmation(
+                    end.plusMinutes(1), end.plusMinutes(2), null, "Fuera de horario")));
+        verify(repository, never()).confirm(
+            any(), any(), any(), anyDouble(), any(), any());
+    }
 }
