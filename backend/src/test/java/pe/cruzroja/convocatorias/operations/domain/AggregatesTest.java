@@ -58,6 +58,11 @@ class AggregatesTest {
         var balance=new MonthlyBalance(3,1,2,-1,false); assertEquals(2,balance.originalHours()); assertEquals(3,balance.hours()); assertEquals(0,balance.deductions());
         assertEquals(2,new MonthlyBalance(3,1,2,0,false).hours()); assertEquals(0,new MonthlyBalance(0,6,-6,0,true).hours());
     }
+    @Test void materialReceiptAcceptsExactlyRequestedQuantity() {
+        assertDoesNotThrow(() ->
+            new MaterialRequest(UUID.randomUUID(), 3, 0, false, false)
+                .requireHandover("RECEPCION", 3));
+    }
     @Test void materialRequestCannotReceiveOrReturnMoreThanAllowed() {
         assertThrows(IllegalArgumentException.class,()->new MaterialRequest(first,3,0,false,false).requireHandover("RECEPCION",4));
         assertDoesNotThrow(()->new MaterialRequest(first,3,2,true,false).requireHandover("DEVOLUCION",1));
@@ -68,5 +73,17 @@ class AggregatesTest {
         assertThrows(IllegalArgumentException.class,()->new Volunteer(first,"VOLUNTARIO","ACTIVO",true,false,false).protectOwnAdministration(first));
         assertDoesNotThrow(()->new HourTargets(new BigDecimal("120"),new BigDecimal("200")));
         assertThrows(IllegalArgumentException.class,()->new HourTargets(BigDecimal.ZERO,BigDecimal.TEN));
+    }
+    @Test
+    void attendanceConfirmCreditsScheduledTwoHours() {
+        var start = LocalDateTime.of(2029, 12, 31, 9, 0);
+        var end = start.plusHours(2);
+        var attendance = new Attendance(
+            UUID.randomUUID(),
+            new ServiceWindow(start, end, start.minusDays(1)),
+            "PENDIENTE_REVISION", null, 2, false, false);
+        double hours = attendance.confirm(
+            start, end, null, false, end.plusHours(1));
+        assertEquals(2.0, hours, 0.0001);
     }
 }

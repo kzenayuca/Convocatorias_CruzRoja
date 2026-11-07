@@ -12,6 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
+import pe.cruzroja.convocatorias.operations.infrastructure.JdbcCalloutRepository;
+import pe.cruzroja.convocatorias.operations.infrastructure.JdbcMaterialRepository;
+
 
 /** Solo contra una base explícita de pruebas; no usa el volumen local habitual. */
 @EnabledIfEnvironmentVariable(named="TEST_DB_URL",matches=".+")
@@ -914,6 +918,24 @@ class WorkflowTest {
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='PERFIL' AND recipient_id=?",Integer.class,"/profile?request="+request,id));
         assertEquals("Perfil Nuevo",c.ok("/profile","GET",null).get("name").asText());
     }
+    @Test
+    @Transactional
+    void calloutMembersReturnConfirmedEnrollmentOnly() {
+        // Inicializar: una inscripción confirmada y otra cancelada del mismo servicio.
+        var start=freeSlot();
+        var calloutId=service(start,start.plusHours(3));
+        fixtureEnrollment(calloutId,volunteer);
+        db.update("INSERT INTO enrollments(id,volunteer_id,callout_id,status) VALUES (?,?,?,'CANCELADA')",
+            UUID.randomUUID(),lucia,calloutId);
+
+        // Ejecutar el repositorio JDBC real, sin mocks.
+        var members=new JdbcCalloutRepository(db).members(calloutId);
+
+        // Verificar: únicamente se devuelve el miembro confirmado.
+        assertEquals(1,members.size());
+        assertEquals(volunteer,members.get(0).volunteer());
+    }
+
     @Test void attendanceReviewNotifiesRequestAndDecisionWithDirectLinks() throws Exception {
         var end=Store.now().minusHours(2).withSecond(0).withNano(0); var start=end.minusHours(3); var id=service(start,end); var e=fixtureEnrollment(id,volunteer);
         var c=new Client().login("voluntario@demo.pe"); var admin=new Client().login("jefatura@demo.pe"); c.ok("/attendance","GET",null);
@@ -932,5 +954,18 @@ class WorkflowTest {
         assertEquals("APROBADA",db.queryForObject("SELECT status FROM attendance_review_requests WHERE id=?",String.class,second));
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM attendance_records WHERE id=?",String.class,a));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='REVISION' AND recipient_id=?",Integer.class,"/services?review="+second,volunteer));
+    }
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void attendancePrepareMarkIsIdempotent() {
+        var start = freeSlot();
+        var callout = service(start, start.plusHours(3));
+        var enrollment = fixtureEnrollment(callout, volunteer);
+        var repository = new pe.cruzroja.convocatorias.operations.infrastructure.JdbcAttendanceRepository(db);
+        repository.prepareMark(enrollment, volunteer, callout, chief);
+        repository.prepareMark(enrollment, volunteer, callout, chief);
+        assertEquals(1, db.queryForObject(
+            "SELECT count(*) FROM attendance_records WHERE enrollment_id=?",
+            Integer.class, enrollment));
     }
 }
