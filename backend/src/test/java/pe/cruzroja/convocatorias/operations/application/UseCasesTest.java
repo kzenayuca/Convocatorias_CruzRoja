@@ -87,4 +87,40 @@ class UseCasesTest {
             contains("Cambio de fecha"),
             eq("/callouts/" + callout));
     }
+    @Test void materialRequestResolvesCatalogNameAndPersistsOnce() {
+        var repository = mock(MaterialRepository.class);
+        var workflow = mock(CalloutWorkflow.class);
+        var materialId = UUID.randomUUID();
+        var material = new MaterialsUseCases.Material(
+            materialId, "Guantes", 4, "Talla M");
+
+        when(workflow.locked(callout)).thenReturn(Map.of(
+            "id", callout,
+            "status", "ABIERTA",
+            "end_at", LocalDateTime.of(2030, 1, 2, 10, 0)));
+        when(repository.name(materialId)).thenReturn("Guantes");
+
+        new MaterialsUseCases(repository, mock(CalloutRepository.class), workflow, context, notices)
+            .request(callout, material);
+
+        verify(repository).request(callout, user, material, "Guantes");
+    }
+
+    @Test void cancelledServiceDoesNotPersistMaterialRequest() {
+        var repository = mock(MaterialRepository.class);
+        var workflow = mock(CalloutWorkflow.class);
+        var material = new MaterialsUseCases.Material(
+            UUID.randomUUID(), "Guantes", 4, "Talla M");
+
+        when(workflow.locked(callout)).thenReturn(Map.of(
+            "id", callout,
+            "status", "CANCELADA",
+            "end_at", LocalDateTime.of(2030, 1, 2, 10, 0)));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> new MaterialsUseCases(repository, mock(CalloutRepository.class), workflow, context, notices)
+                .request(callout, material));
+        verify(repository, never()).request(any(), any(), any(), any());
+    }
+
 }
