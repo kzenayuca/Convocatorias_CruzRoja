@@ -122,5 +122,17 @@ class UseCasesTest {
                 .request(callout, material));
         verify(repository, never()).request(any(), any(), any(), any());
     }
+    @Test
+    void noticeReadingRegistersTheAuthenticatedActorWithAFixedClock() {
+        var fixed = LocalDateTime.of(2026, 1, 15, 10, 0);
+        when(context.now()).thenReturn(fixed);
+        var repo = mock(NoticeRepository.class);
+        var n1 = UUID.randomUUID();
+
+        new NoticesUseCases(repo, context, notices).read(n1);
+
+        verify(repo).read(n1, user, fixed);      // N1, U1 y la hora fija
+        verifyNoInteractions(notices);
+    }
 
 }
