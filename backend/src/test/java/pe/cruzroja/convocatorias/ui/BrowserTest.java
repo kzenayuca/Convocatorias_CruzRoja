@@ -187,8 +187,9 @@ class BrowserTest {
         wait.until(d -> d.findElement(By.tagName("main")).getText().contains(title) && d.findElement(By.tagName("main")).getText().contains("ACEPTADA"));
         browser.navigate().refresh(); wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),title));
         click("Mi programación");
+        var dateInput=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[aria-label='Fecha de programación']")));
         var day=start.toLocalDate().toString();
-        ((JavascriptExecutor)browser).executeScript("const i=arguments[0]; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(i,arguments[1]); i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true}));",browser.findElement(By.cssSelector("input[type=date]")),day);
+        ((JavascriptExecutor)browser).executeScript("const i=arguments[0]; const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(i,arguments[1]); i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true}));",dateInput,day);
         wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector(".schedule-link"))); screenshot("programacion-browser.png");
         assertTrue(browser.findElements(By.xpath("//button[contains(text(),'Descargar PDF')]")).isEmpty());
         browser.findElement(By.cssSelector(".schedule-link")).click();
@@ -311,5 +312,21 @@ class BrowserTest {
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"),"Tu inscripción: ACEPTADA"));
         assertTrue(browser.findElements(By.xpath("//button[text()='Adjuntar foto']")).isEmpty());
         assertTrue(browser.findElements(By.xpath("//summary[text()='Revisión de asistencia']")).isEmpty());
+    }
+
+    @Test void registrationRejectsDuplicateEmail() {
+        click("Solicitar una cuenta");
+        String suffix=String.valueOf(System.nanoTime());
+        browser.findElement(By.name("name")).sendKeys("Duplicado");
+        browser.findElement(By.name("surnames")).sendKeys("Correo");
+        browser.findElement(By.name("email")).sendKeys("voluntario@demo.pe");
+        browser.findElement(By.name("document")).sendKeys(String.format("%08d",Math.abs(suffix.hashCode()%90000000)+10000000));
+        browser.findElement(By.name("occupation")).sendKeys("Estudiante");
+        browser.findElement(By.name("phone")).sendKeys("900000001");
+        browser.findElement(By.name("password")).sendKeys("convocatorias");
+        click("Solicitar cuenta");
+
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("[role=alert]"),"Los datos ya están registrados o no son válidos"));
+        assertTrue(browser.findElements(By.xpath("//*[contains(normalize-space(.),'Solicitud registrada')]")).isEmpty());
     }
 }

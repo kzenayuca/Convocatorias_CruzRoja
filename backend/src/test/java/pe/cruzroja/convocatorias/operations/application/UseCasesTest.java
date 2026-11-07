@@ -61,4 +61,66 @@ class UseCasesTest {
         new NoticesUseCases(repo,context,notices).publish(new Announcement("Aviso","Reunión de equipo","TODOS"));
         verify(repo).save(any(UUID.class),any(Announcement.class),eq(chief)); verify(notices).publish(eq(user),eq("COMUNICADO"),contains("Reunión"),eq("/notifications"));
     }
+    @Test
+    void cancellationPersistsReasonAndNotifiesApplicant() {
+        var repository = mock(CalloutRepository.class);
+        var enrollments = mock(EnrollmentRepository.class);
+
+        when(enrollments.applicants(callout))
+            .thenReturn(List.of(Map.of("volunteer_id", user)));
+
+        var workflow = new CalloutWorkflow(
+            repository, enrollments, context, notices);
+
+        var calloutData = new HashMap<String, Object>();
+        calloutData.put("id", callout);
+        calloutData.put("title", "Guardia de prueba");
+        calloutData.put("created_by", chief);
+        calloutData.put("responsible_id", chief);
+
+        workflow.cancel(calloutData, "Cambio de fecha");
+
+        verify(repository).cancel(callout, "Cambio de fecha");
+        verify(notices).publish(
+            eq(user),
+            eq("CONVOCATORIA"),
+            contains("Cambio de fecha"),
+            eq("/callouts/" + callout));
+    }
+    @Test void materialRequestResolvesCatalogNameAndPersistsOnce() {
+        var repository = mock(MaterialRepository.class);
+        var workflow = mock(CalloutWorkflow.class);
+        var materialId = UUID.randomUUID();
+        var material = new MaterialsUseCases.Material(
+            materialId, "Guantes", 4, "Talla M");
+
+        when(workflow.locked(callout)).thenReturn(Map.of(
+            "id", callout,
+            "status", "ABIERTA",
+            "end_at", LocalDateTime.of(2030, 1, 2, 10, 0)));
+        when(repository.name(materialId)).thenReturn("Guantes");
+
+        new MaterialsUseCases(repository, mock(CalloutRepository.class), workflow, context, notices)
+            .request(callout, material);
+
+        verify(repository).request(callout, user, material, "Guantes");
+    }
+
+    @Test void cancelledServiceDoesNotPersistMaterialRequest() {
+        var repository = mock(MaterialRepository.class);
+        var workflow = mock(CalloutWorkflow.class);
+        var material = new MaterialsUseCases.Material(
+            UUID.randomUUID(), "Guantes", 4, "Talla M");
+
+        when(workflow.locked(callout)).thenReturn(Map.of(
+            "id", callout,
+            "status", "CANCELADA",
+            "end_at", LocalDateTime.of(2030, 1, 2, 10, 0)));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> new MaterialsUseCases(repository, mock(CalloutRepository.class), workflow, context, notices)
+                .request(callout, material));
+        verify(repository, never()).request(any(), any(), any(), any());
+    }
+
 }
