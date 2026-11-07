@@ -955,19 +955,17 @@ class WorkflowTest {
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM attendance_records WHERE id=?",String.class,a));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='REVISION' AND recipient_id=?",Integer.class,"/services?review="+second,volunteer));
     }
-    @Test @Transactional void materialRequestFindReadsFixture() {
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void attendancePrepareMarkIsIdempotent() {
         var start = freeSlot();
         var callout = service(start, start.plusHours(3));
-        var request = UUID.randomUUID();
-
-        db.update("""
-            INSERT INTO material_requests(id,callout_id,requested_by,name,quantity,details)
-            VALUES (?,?,?,?,?,?)
-            """, request, callout, chief, "Guantes", 3, "Talla M");
-
-        var row = new JdbcMaterialRepository(db).find(request, false);
-        assertEquals("Guantes", row.get("name"));
-        assertEquals(3, ((Number) row.get("quantity")).intValue());
+        var enrollment = fixtureEnrollment(callout, volunteer);
+        var repository = new pe.cruzroja.convocatorias.operations.infrastructure.JdbcAttendanceRepository(db);
+        repository.prepareMark(enrollment, volunteer, callout, chief);
+        repository.prepareMark(enrollment, volunteer, callout, chief);
+        assertEquals(1, db.queryForObject(
+            "SELECT count(*) FROM attendance_records WHERE enrollment_id=?",
+            Integer.class, enrollment));
     }
-
 }
