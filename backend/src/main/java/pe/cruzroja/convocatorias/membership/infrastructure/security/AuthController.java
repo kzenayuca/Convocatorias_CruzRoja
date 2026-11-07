@@ -25,21 +25,29 @@ public class AuthController {
     Map<String, String> csrf(org.springframework.security.web.csrf.CsrfToken token) {
         return Map.of("token", token.getToken(), "headerName", token.getHeaderName());
     }
+
     private final AuthenticationManager authenticationManager;
-    private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
+    private final SecurityContextRepository contextRepository =
+            new HttpSessionSecurityContextRepository();
 
     public AuthController(AuthenticationManager authenticationManager) {
         this.authenticationManager = authenticationManager;
     }
 
-    public record LoginRequest(@Email @NotBlank String email, @NotBlank String password) { }
-    public record SessionResponse(String id, String name, String email, String role, boolean graduated) { }
+    public record LoginRequest(@Email @NotBlank String email, @NotBlank String password) {}
+
+    public record SessionResponse(
+            String id, String name, String email, String role, boolean graduated) {}
 
     @PostMapping("/login")
-    ResponseEntity<SessionResponse> login(@Valid @RequestBody LoginRequest request,
-                                          HttpServletRequest servletRequest, HttpServletResponse servletResponse) {
-        var authentication = authenticationManager.authenticate(
-                UsernamePasswordAuthenticationToken.unauthenticated(request.email(), request.password()));
+    ResponseEntity<SessionResponse> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
+        var authentication =
+                authenticationManager.authenticate(
+                        UsernamePasswordAuthenticationToken.unauthenticated(
+                                request.email(), request.password()));
         if (servletRequest.getSession(false) != null) servletRequest.changeSessionId();
         var context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
@@ -50,7 +58,9 @@ public class AuthController {
 
     @GetMapping("/me")
     SessionResponse me() {
-        return toResponse((AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+        return toResponse(
+                (AuthenticatedUser)
+                        SecurityContextHolder.getContext().getAuthentication().getPrincipal());
     }
 
     @PostMapping("/logout")
@@ -62,6 +72,7 @@ public class AuthController {
     }
 
     private SessionResponse toResponse(AuthenticatedUser user) {
-        return new SessionResponse(user.id().toString(), user.name(), user.email(), user.role(), user.graduated());
+        return new SessionResponse(
+                user.id().toString(), user.name(), user.email(), user.role(), user.graduated());
     }
 }

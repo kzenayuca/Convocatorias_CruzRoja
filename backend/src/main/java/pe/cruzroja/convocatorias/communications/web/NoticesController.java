@@ -9,8 +9,23 @@ import pe.cruzroja.convocatorias.communications.domain.Announcement;
 @RequestMapping("/api/v1")
 public class NoticesController {
     private final NoticesUseCases useCases;
-    public NoticesController(NoticesUseCases useCases) { this.useCases=useCases; }
-    @GetMapping("/notifications") public List<Map<String,Object>> notices() { return useCases.notices(); }
-    @PostMapping("/notifications/{id}/read") public void read(@PathVariable UUID id) { useCases.read(id); }
-    @PostMapping("/announcements") public void publish(@RequestBody Announcement r) { useCases.publish(r); }
+
+    public NoticesController(NoticesUseCases useCases) {
+        this.useCases = useCases;
+    }
+
+    @GetMapping("/notifications")
+    public List<NotificationResponse> notices() {
+        return useCases.notices().stream().map(NotificationResponse::from).toList();
+    }
+
+    @PostMapping("/notifications/{id}/read")
+    public void read(@PathVariable UUID id) {
+        useCases.read(id);
+    }
+
+    @PostMapping("/announcements")
+    public void publish(@RequestBody Announcement r) {
+        useCases.publish(r);
+    }
 }

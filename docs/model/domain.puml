@@ -1,0 +1,132 @@
+@startuml
+title Convocatorias Cruz Roja - modelo de dominio (vista resumida)
+skinparam classAttributeIconSize 0
+package membership {
+    class Volunteer <<AggregateRoot>> {
+        id : UUID
+        role : String
+        status : String
+        graduated : boolean
+        protectOwnAdministration(actor)
+    }
+    class AnnualEnrollment <<ValueObject>> {
+        year : int
+        startsOn()
+        endsOn()
+    }
+}
+package operations {
+    class Callout <<AggregateRoot>> {
+        id : UUID
+        responsibleId : UUID
+        complete()
+        canAdmit(graduated, position, replacing)
+        requireEnrollment(accepted, assigned, replacement, now)
+        requireResponsibleChange(expected, next, reason)
+        requireOperation(action, now)
+    }
+    class ServiceWindow <<ValueObject>> {
+        start : LocalDateTime
+        end : LocalDateTime
+        deadline : LocalDateTime
+        validatePlanning(now)
+        overlaps(other)
+    }
+    class TeamCapacity <<ValueObject>> {
+        total : int
+        graduates : int
+        radio : int
+        pilots : int
+        fits(people, graduated, radioPeople, pilotPeople)
+        complete(people, graduated, radioPeople, pilotPeople)
+    }
+    class Enrollment <<Entity>> {
+        id : UUID
+        volunteerId : UUID
+        calloutId : UUID
+        status : EnrollmentStatus
+        position : Position
+        requireNewRequest()
+        assignResponsible()
+        removeResponsibility()
+        cancelForReplacement()
+    }
+    enum EnrollmentStatus {
+        PENDIENTE
+        CONFIRMADA
+        PENDIENTE_REEMPLAZO
+        RECHAZADA
+        CANCELADA
+        EXPIRADA
+    }
+    enum Position {
+        SOCORRISTA
+        GRADUADO
+        RESPONSABLE
+        RADIOPERADOR
+        PILOTO
+        FORMACION
+    }
+    class ServiceCode <<ValueObject>> {
+        category : String
+        createdAt : LocalDateTime
+        sequence : int
+        value()
+    }
+    class Attendance <<AggregateRoot>> {
+        id : UUID
+        deduction(justified)
+        confirm(in, out, exceptional, chief, now)
+    }
+    class Justification <<AggregateRoot>> {
+        id : UUID
+        resolve(approved, comment, actor, at, before, after)
+    }
+    class MaterialRequest <<AggregateRoot>> {
+        id : UUID
+        requireHandover(action, quantity)
+    }
+    class MonthlyBalance <<ValueObject>> {
+        deductions()
+        adjustment()
+        hours()
+    }
+    class ServiceRules <<DomainPolicy>>
+    interface EnrollmentRepository
+}
+package administration {
+    class HourTargets <<ValueObject>> {
+        trainingHours : BigDecimal
+        graduateHours : BigDecimal
+    }
+    interface AdministrationRepository
+}
+package communications {
+    class Announcement <<ValueObject>>
+    class Notification <<Entity>> {
+        id : UUID
+        recipientId : UUID
+        readAt : LocalDateTime
+        readBy(actor, at)
+    }
+    interface NoticeRepository
+}
+Callout *-- ServiceWindow
+Callout *-- TeamCapacity
+Callout --> "0..*" Enrollment : referencia y consistencia transaccional
+Enrollment --> Volunteer : UUID, no propiedad de cuenta
+Enrollment --> Position
+Enrollment --> EnrollmentStatus
+Attendance *-- ServiceWindow
+Attendance ..> ServiceRules
+Justification --> Attendance : tramite posterior
+Justification --> Enrollment : reemplazo preventivo
+MaterialRequest "0..*" --> "1" Callout
+Notification "0..*" --> "1" Volunteer : destinatario
+AnnualEnrollment "0..*" --> "1" Volunteer : ciclo administrativo
+note bottom of Enrollment
+La clasificación como entidad no presupone agregado independiente.
+Admisión/cupos se coordinan bajo bloqueo de Callout.
+ORM y proyecciones no aparecen como entidades del negocio.
+end note
+@enduml

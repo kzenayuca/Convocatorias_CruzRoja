@@ -9,5 +9,8 @@ import org.springframework.web.bind.annotation.*;
 @RestControllerAdvice
 public class SecurityErrorHandler {
     @ExceptionHandler(AuthenticationException.class)
-    ResponseEntity<Map<String,String>> credentials() { return ResponseEntity.status(401).body(Map.of("mensaje","Credenciales incorrectas o cuenta no activa.")); }
+    ResponseEntity<Map<String, String>> credentials() {
+        return ResponseEntity.status(401)
+                .body(Map.of("mensaje", "Credenciales incorrectas o cuenta no activa."));
+    }
 }

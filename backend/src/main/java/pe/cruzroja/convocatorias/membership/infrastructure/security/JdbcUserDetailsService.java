@@ -16,18 +16,39 @@ public class JdbcUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String email) {
-        var users = jdbc.query("SELECT id,name,email,password_hash,role,graduated,status FROM users WHERE lower(email)=lower(?)",
-                (rs, row) -> new AuthenticatedUser(rs.getObject("id", java.util.UUID.class), rs.getString("name"),
-                        rs.getString("email"), rs.getString("password_hash"), rs.getString("role"),
-                        rs.getBoolean("graduated"), "ACTIVO".equals(rs.getString("status"))), email);
+        var users =
+                jdbc.query(
+                        "SELECT id,name,email,password_hash,role,graduated,status FROM users WHERE lower(email)=lower(?)",
+                        (rs, row) ->
+                                new AuthenticatedUser(
+                                        rs.getObject("id", java.util.UUID.class),
+                                        rs.getString("name"),
+                                        rs.getString("email"),
+                                        rs.getString("password_hash"),
+                                        rs.getString("role"),
+                                        rs.getBoolean("graduated"),
+                                        "ACTIVO".equals(rs.getString("status"))),
+                        email);
         if (users.isEmpty()) throw new UsernameNotFoundException("Usuario no encontrado");
         return users.get(0);
     }
 
     public AuthenticatedUser loadById(java.util.UUID id) {
-        return jdbc.query("SELECT * FROM users WHERE id=?", (rs, row) -> new AuthenticatedUser(
-                id, rs.getString("name"), rs.getString("email"), rs.getString("password_hash"),
-                rs.getString("role"), rs.getBoolean("graduated"), "ACTIVO".equals(rs.getString("status"))), id)
-                .stream().findFirst().orElse(null);
+        return jdbc
+                .query(
+                        "SELECT * FROM users WHERE id=?",
+                        (rs, row) ->
+                                new AuthenticatedUser(
+                                        id,
+                                        rs.getString("name"),
+                                        rs.getString("email"),
+                                        rs.getString("password_hash"),
+                                        rs.getString("role"),
+                                        rs.getBoolean("graduated"),
+                                        "ACTIVO".equals(rs.getString("status"))),
+                        id)
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 }

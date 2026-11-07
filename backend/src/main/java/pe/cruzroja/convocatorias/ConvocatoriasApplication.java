@@ -9,6 +9,7 @@ public class ConvocatoriasApplication {
     void useLocalTime() {
         java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Lima"));
     }
+
     public static void main(String[] args) {
         SpringApplication.run(ConvocatoriasApplication.class, args);
     }

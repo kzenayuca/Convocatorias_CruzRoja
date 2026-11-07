@@ -11,3 +11,6 @@ frontend/vite.config.d.ts
 node_modules/
 *.log
 .DS_Store
+*.mdj
+__pycache__/
+*.pyc

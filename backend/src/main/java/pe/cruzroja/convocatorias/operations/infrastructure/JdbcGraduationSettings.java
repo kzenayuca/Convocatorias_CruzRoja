@@ -7,8 +7,15 @@ import pe.cruzroja.convocatorias.operations.application.GraduationSettings;
 @Repository
 public class JdbcGraduationSettings implements GraduationSettings {
     private final JdbcTemplate db;
-    public JdbcGraduationSettings(JdbcTemplate db) { this.db=db; }
+
+    public JdbcGraduationSettings(JdbcTemplate db) {
+        this.db = db;
+    }
+
     public Double requiredHours(boolean graduated) {
-        return db.queryForObject("SELECT hours FROM volunteer_hour_targets WHERE condition=?",Double.class,graduated?"GRADUADO":"FORMACION");
+        return db.queryForObject(
+                "SELECT hours FROM volunteer_hour_targets WHERE condition=?",
+                Double.class,
+                graduated ? "GRADUADO" : "FORMACION");
     }
 }

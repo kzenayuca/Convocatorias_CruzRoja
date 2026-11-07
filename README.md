@@ -1,81 +1,69 @@
-# 🩺 Convocatorias
-**Cruz Roja · Filial Arequipa**
+# Convocatorias · Cruz Roja Filial Arequipa
 
-Un espacio simple para consultar servicios y organizar el voluntariado.
+Aplicación web para organizar convocatorias, inscripciones, equipos y resultados del voluntariado.
 
-**React + TypeScript · Spring Boot · PostgreSQL**
+**React + TypeScript · Spring Boot · Java 17 · PostgreSQL · JPA/Hibernate**
 
-**Versión 2.7.0:** monolito modular con **Web + DDD + Clean Architecture**, códigos automáticos E/I/G, formación por saldo neto histórico, inscripción anual de graduados y reportes mensual/anual descargables. Se conservan los datos anteriores. [Ver arquitectura y contextos](ARCHITECTURE.md).
+## Funcionalidades
 
-## 🚀 Arranque local
+- Solicitud y activación de cuentas; perfil y revisión de cambios.
+- Convocatorias con código automático, requisitos, horarios y composición del equipo.
+- Inscripción automática y asignación directa con control de elegibilidad, cupos y cruces.
+- Responsable por servicio, programación y operación.
+- Asistencia, horas, revisiones, justificaciones y reemplazos.
+- Reportes mensuales/anuales y metas de graduación.
+- Solicitudes de materiales, recepción y devolución.
+- Comunicados y notificaciones personales.
 
-Requiere Docker Desktop iniciado, Java 17+ con Maven y Node 22.12+.
+## Entender el sistema
 
-**1. Base de datos** — desde la raíz:
+1. [Requisitos, recorrido y restricciones](docs/REQUISITOS.md).
+2. [Arquitectura, tablas y modelo StarUML](docs/ARQUITECTURA.md).
+3. [Desarrollo, migraciones y pruebas](docs/DESARROLLO.md).
+4. [Convenciones, estilos y Clean Code](docs/CALIDAD.md).
+
+## Ejecutar localmente
+
+Requisitos: Java 17+, Node 22.12+ y PostgreSQL. Docker Desktop es una opción para la base.
+Cada componente se inicia en una terminal independiente.
+
 ```powershell
+# 1. Desde la raíz
 docker compose up -d
-```
 
-**2. Backend** — en otra terminal, desde la raíz:
-```powershell
+# 2. Backend (otra terminal)
 cd backend
-mvn clean test
-mvn spring-boot:run
-```
+.\mvnw.cmd spring-boot:run
 
-**3. Frontend** — en otra terminal, desde la raíz:
-```powershell
-cd frontend
-npm run dev
-```
-La primera vez, ejecuta `npm ci` dentro de `frontend` antes de iniciarlo. El `clean` inicial del backend elimina clases compiladas de paquetes anteriores, no datos de PostgreSQL.
-
-| Servicio | Dirección |
-|---|---|
-| Aplicación | http://localhost:5173 — o el puerto que indique Vite |
-| Salud de la API | http://localhost:8080/api/v1/health |
-| Adminer | http://localhost:8081 |
-
-## 🔑 Acceso demo
-
-Contraseña para todas las cuentas: **`convocatorias`**.
-
-| Rol | Correo |
-|---|---|
-| Voluntario | `voluntario@demo.pe` |
-| Voluntario graduado (correo histórico) | `reclutador@demo.pe` |
-| Jefatura | `jefatura@demo.pe` |
-
-**Adminer:** motor PostgreSQL, servidor **`db`**; usuario, contraseña y base: **`convocatorias`**. Desde tu equipo, PostgreSQL está en `127.0.0.1:5433`.
-
-## 📌 Qué puedes probar
-
-Registro con aprobación de jefatura; perfil con botón **Modificar**; inscripción automática y **un total de voluntarios que incluye responsable, piloto y radioperador**. Voluntario admite graduados y personas en formación; el mínimo de graduados se exige dentro del total, no se suma. Responsable opcional asignado por jefatura. **Mi programación** solo muestra participaciones aceptadas; jefatura tiene la programación general. Cada servicio abre su página de detalle.
-
-Jefatura puede **buscar por nombre e inscribir directamente** a personas elegibles desde una convocatoria publicada: verifica conocimientos, cursos y demás requisitos propios del servicio; el sistema valida graduación, habilitaciones, cupos, plazo y cruces. **No hay niveles visibles ni restricciones por nivel.** La persona recibe una notificación y la inscripción aparece en su programación.
-
-El **responsable** es un voluntario graduado activo ya inscrito y confirmado como voluntario general. Solo en su convocatoria tiene permisos para gestionar, subir fotos y confirmar asistencias. Cambiarlo o retirarlo requiere una acción explícita y auditada; conserva la inscripción, pero pierde los permisos. El contacto se actualiza al teléfono del responsable, visible solo a jefatura y participantes confirmados; de otro modo dice “Consultar a jefatura”. El antiguo rol RECLUTADOR sigue migrándose a VOLUNTARIO conservando cuentas e historial.
-
-**Solo jefatura descarga el PDF de programación.** Se conservan vista digital y PDF real de reportes y solicitudes de almacén según sus permisos. Fotos opcionales JPG/PNG hasta **10 MB**, botón **Adjuntar foto**, ofrecido al cerrar o después; solo jefatura o el responsable confirmado pueden subirlas. Administración configura dos metas generales de horas acumuladas para voluntarios en formación y graduados; **jefatura no tiene meta ni penalizaciones ni se justifica**. Hay **8 convocatorias y 10 perfiles demo**; consulta [DOCS.md](DOCS.md#datos-demo).
-
-La bandeja de justificaciones de jefatura permite consultar todos los usuarios y estados, filtrar, aprobar o rechazar con motivo y revisar el historial. Cada decisión registra autor, fecha y efecto en la penalización. Se pueden resolver después del cierre mensual: se añaden ajustes separados sin sobrescribir el cierre original ni otorgar horas no trabajadas.
-
-> **Prototipo local:** sin QR, recuperación de contraseña ni suspensiones automáticas. Conserva tus datos: no uses `docker compose down -v`. Reinicia el backend para aplicar las ampliaciones del esquema.
-
-Tolerancia: **10 minutos**. Superado ese límite se descuenta el doble del retraso; una justificación aprobada elimina la penalización, no acredita tiempo no trabajado. El plazo ordinario para justificar es **48 horas**.
-
-Las reglas y las pruebas **JUnit + Selenium** están en **[DOCS.md](DOCS.md)**. JUnit, Mockito y JaCoCo preparan la base técnica para el Lab 5. **El Lab 6 y su separación multirepo quedan para después**; no se han creado repositorios ni tareas en GitHub.
-
-## Comprobar esta versión
-
-```powershell
-# Frontend
+# 3. Frontend (otra terminal)
 cd frontend
 npm ci
-npm run build
-# Backend (pruebas unitarias; para integración ver DOCS.md)
-cd ../backend
-mvn clean test
+npm run dev
 ```
 
-Cobertura: `backend/target/site/jacoco/index.html`. Ejecución JUnit: `backend/target/surefire-reports/`.
+En Bash utilizar `./mvnw`. **Si la base ya existía antes de Flyway, hacer copia y seguir
+[la adopción explícita](docs/DESARROLLO.md#base-existente-antes-del-primer-arranque).** No borrar volúmenes.
+
+| Componente | Dirección habitual |
+|---|---|
+| Frontend | http://localhost:5173 |
+| Backend / salud | http://localhost:8080/api/v1/health |
+| PostgreSQL | 127.0.0.1:5433 |
+| Adminer | http://localhost:8081 |
+
+## Probar con datos demo
+
+Contraseña demo: `convocatorias`.
+
+| Perfil | Correo |
+|---|---|
+| Voluntario | `voluntario@demo.pe` |
+| Graduada | `maria@demo.pe` |
+| Jefatura | `jefatura@demo.pe` |
+
+Recorrido sugerido: Jefatura crea y publica; voluntario revisa condiciones y se inscribe;
+Jefatura consulta cobertura y equipo. El total incluye todas las funciones; **Completa** no significa
+**Finalizada**. Los graduados necesitan ciclo anual para el año del servicio.
+
+Es un prototipo local. Antes de utilizar datos reales se necesitan HTTPS, copias/restauración,
+consentimiento y retención de datos, revisión de seguridad y pruebas de capacidad.
