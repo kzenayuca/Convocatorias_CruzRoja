@@ -14,6 +14,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import pe.cruzroja.convocatorias.operations.infrastructure.JdbcCalloutRepository;
+import pe.cruzroja.convocatorias.operations.infrastructure.JdbcMaterialRepository;
 
 
 /** Solo contra una base explícita de pruebas; no usa el volumen local habitual. */
@@ -954,4 +955,19 @@ class WorkflowTest {
         assertEquals("CONFIRMADA",db.queryForObject("SELECT status FROM attendance_records WHERE id=?",String.class,a));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM notifications WHERE link=? AND type='REVISION' AND recipient_id=?",Integer.class,"/services?review="+second,volunteer));
     }
+    @Test @Transactional void materialRequestFindReadsFixture() {
+        var start = freeSlot();
+        var callout = service(start, start.plusHours(3));
+        var request = UUID.randomUUID();
+
+        db.update("""
+            INSERT INTO material_requests(id,callout_id,requested_by,name,quantity,details)
+            VALUES (?,?,?,?,?,?)
+            """, request, callout, chief, "Guantes", 3, "Talla M");
+
+        var row = new JdbcMaterialRepository(db).find(request, false);
+        assertEquals("Guantes", row.get("name"));
+        assertEquals(3, ((Number) row.get("quantity")).intValue());
+    }
+
 }
