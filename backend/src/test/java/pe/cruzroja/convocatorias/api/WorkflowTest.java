@@ -969,5 +969,47 @@ class WorkflowTest {
         assertEquals("Guantes", row.get("name"));
         assertEquals(3, ((Number) row.get("quantity")).intValue());
     }
+    @Test
+    @Transactional
+    void noticeReadIsPersistedOnlyForItsRecipientAndKeepsTheFirstReadDate() {
+        var repository = new pe.cruzroja.convocatorias.communications.infrastructure.JdbcNoticeRepository(db);
+        var notice = UUID.randomUUID();
+        var first = LocalDateTime.of(2026, 1, 15, 10, 0);
+        db.update("INSERT INTO notifications(id,recipient_id,type,message,link) VALUES (?,?,?,?,?)",
+            notice, volunteer, "COMUNICADO", "Aviso: Reunión", "/notifications");
+
+        repository.read(notice, lucia, first);                       // otro usuario: no cambia nada
+        assertFalse(db.queryForObject("SELECT is_read FROM notifications WHERE id=?", Boolean.class, notice));
+
+        repository.read(notice, volunteer, first);                   // el destinatario: queda leído
+        assertTrue(db.queryForObject("SELECT is_read FROM notifications WHERE id=?", Boolean.class, notice));
+        assertEquals(first, db.queryForObject("SELECT read_at FROM notifications WHERE id=?",
+            java.sql.Timestamp.class, notice).toLocalDateTime());
+
+        repository.read(notice, volunteer, first.plusHours(1));      // 2.ª lectura: conserva la primera fecha
+        assertEquals(first, db.queryForObject("SELECT read_at FROM notifications WHERE id=?",
+            java.sql.Timestamp.class, notice).toLocalDateTime());
+    }
+
+    @Test
+    @Transactional
+    void announcementIsPersistedAndRecipientsAreActiveUsersOfTheAudience() {
+        var repository = new pe.cruzroja.convocatorias.communications.infrastructure.JdbcNoticeRepository(db);
+        var id = UUID.randomUUID();
+
+        repository.save(id, new pe.cruzroja.convocatorias.communications.domain.Announcement(
+            "Aviso de prueba", "Reunión de equipo", "JEFATURA"), chief);
+
+        assertEquals("Aviso de prueba", db.queryForObject("SELECT title FROM announcements WHERE id=?", String.class, id));
+        assertEquals(chief, db.queryForObject("SELECT published_by FROM announcements WHERE id=?", UUID.class, id));
+
+        var chiefs = repository.recipients("JEFATURA");
+        assertTrue(chiefs.contains(chief));
+        assertFalse(chiefs.contains(volunteer));
+
+        var everyone = repository.recipients("TODOS");
+        assertTrue(everyone.contains(volunteer));
+        assertFalse(everyone.contains(UUID.fromString("00000000-0000-0000-0000-000000000010"))); // usuario INACTIVO
+    }
 
 }
