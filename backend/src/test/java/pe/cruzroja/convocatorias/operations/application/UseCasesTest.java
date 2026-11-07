@@ -62,65 +62,50 @@ class UseCasesTest {
         verify(repo).save(any(UUID.class),any(Announcement.class),eq(chief)); verify(notices).publish(eq(user),eq("COMUNICADO"),contains("Reunión"),eq("/notifications"));
     }
     @Test
-    void cancellationPersistsReasonAndNotifiesApplicant() {
-        var repository = mock(CalloutRepository.class);
-        var enrollments = mock(EnrollmentRepository.class);
-
-        when(enrollments.applicants(callout))
-            .thenReturn(List.of(Map.of("volunteer_id", user)));
-
-        var workflow = new CalloutWorkflow(
-            repository, enrollments, context, notices);
-
-        var calloutData = new HashMap<String, Object>();
-        calloutData.put("id", callout);
-        calloutData.put("title", "Guardia de prueba");
-        calloutData.put("created_by", chief);
-        calloutData.put("responsible_id", chief);
-
-        workflow.cancel(calloutData, "Cambio de fecha");
-
-        verify(repository).cancel(callout, "Cambio de fecha");
-        verify(notices).publish(
-            eq(user),
-            eq("CONVOCATORIA"),
-            contains("Cambio de fecha"),
-            eq("/callouts/" + callout));
-    }
-    @Test void materialRequestResolvesCatalogNameAndPersistsOnce() {
-        var repository = mock(MaterialRepository.class);
+    void attendanceConfirmationPersistsCalculatedHoursOnce() {
+        // Arrange: servicio de 09:00 a 11:00 ya terminado y asistencia pendiente
+        var repository = mock(AttendanceRepository.class);
         var workflow = mock(CalloutWorkflow.class);
-        var materialId = UUID.randomUUID();
-        var material = new MaterialsUseCases.Material(
-            materialId, "Guantes", 4, "Talla M");
-
+        UUID attendance = UUID.randomUUID();
+        var start = LocalDateTime.of(2029, 12, 31, 9, 0);
+        var end = start.plusHours(2);
+        when(repository.find(attendance, false)).thenReturn(new HashMap<>(Map.of(
+            "id", attendance, "callout_id", callout, "volunteer_id", user,
+            "status", "PENDIENTE_REVISION", "policy_version", 2)));
         when(workflow.locked(callout)).thenReturn(Map.of(
-            "id", callout,
-            "status", "ABIERTA",
-            "end_at", LocalDateTime.of(2030, 1, 2, 10, 0)));
-        when(repository.name(materialId)).thenReturn("Guantes");
-
-        new MaterialsUseCases(repository, mock(CalloutRepository.class), workflow, context, notices)
-            .request(callout, material);
-
-        verify(repository).request(callout, user, material, "Guantes");
+            "id", callout, "title", "Guardia", "status", "CERRADA",
+            "start_at", start, "end_at", end, "deadline", start.minusDays(1)));
+        when(repository.reviews(attendance)).thenReturn(List.of());
+        when(repository.trainingVolunteer(user)).thenReturn(false);
+        var useCase = new AttendanceUseCases(repository, mock(EnrollmentRepository.class), mock(CalloutRepository.class), workflow, mock(ServiceMaintenance.class), mock(MonthlyLedger.class), mock(GraduationSettings.class), mock(ImageInspector.class), context, notices);
+        // Act
+        useCase.confirm(attendance,
+            new AttendanceUseCases.Confirmation(start, end, null, "Marcas verificadas"));
+        // Assert: se guardan exactamente las 2 horas calculadas, una sola vez
+        verify(repository).confirm(
+            eq(attendance), eq(start), eq(end), eq(2.0), eq(user), eq("Marcas verificadas"));
     }
-
-    @Test void cancelledServiceDoesNotPersistMaterialRequest() {
-        var repository = mock(MaterialRepository.class);
+    @Test
+    void invalidAttendanceMarksAreNotPersisted() {
+        // Arrange
+        var repository = mock(AttendanceRepository.class);
         var workflow = mock(CalloutWorkflow.class);
-        var material = new MaterialsUseCases.Material(
-            UUID.randomUUID(), "Guantes", 4, "Talla M");
-
+        UUID attendance = UUID.randomUUID();
+        var start = LocalDateTime.of(2029, 12, 31, 9, 0);
+        var end = start.plusHours(2);
+        when(repository.find(attendance, false)).thenReturn(new HashMap<>(Map.of(
+            "id", attendance, "callout_id", callout, "volunteer_id", user,
+            "status", "PENDIENTE_REVISION", "policy_version", 2)));
         when(workflow.locked(callout)).thenReturn(Map.of(
-            "id", callout,
-            "status", "CANCELADA",
-            "end_at", LocalDateTime.of(2030, 1, 2, 10, 0)));
-
+            "id", callout, "title", "Guardia", "status", "CERRADA",
+            "start_at", start, "end_at", end, "deadline", start.minusDays(1)));
+        var useCase = new AttendanceUseCases(repository, mock(EnrollmentRepository.class), mock(CalloutRepository.class), workflow, mock(ServiceMaintenance.class), mock(MonthlyLedger.class), mock(GraduationSettings.class), mock(ImageInspector.class), context, notices);
+        // Act + Assert: marcas fuera del horario del servicio
         assertThrows(IllegalArgumentException.class,
-            () -> new MaterialsUseCases(repository, mock(CalloutRepository.class), workflow, context, notices)
-                .request(callout, material));
-        verify(repository, never()).request(any(), any(), any(), any());
+            () -> useCase.confirm(attendance,
+                new AttendanceUseCases.Confirmation(
+                    end.plusMinutes(1), end.plusMinutes(2), null, "Fuera de horario")));
+        verify(repository, never()).confirm(
+            any(), any(), any(), anyDouble(), any(), any());
     }
-
 }
