@@ -313,4 +313,23 @@ class BrowserTest {
         assertTrue(browser.findElements(By.xpath("//button[text()='Adjuntar foto']")).isEmpty());
         assertTrue(browser.findElements(By.xpath("//summary[text()='Revisión de asistencia']")).isEmpty());
     }
+
+    @Test void volunteerCannotAccessAdministration() {
+        // 1. Iniciar sesión como voluntario
+        var email=wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("voluntario@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("nav a[href='/profile']")));
+        // 2. La navegación no muestra el enlace Administración
+        assertTrue(browser.findElements(By.cssSelector("nav a[href='/administration']")).isEmpty());
+        // 3. Abrir la ruta directamente
+        browser.get(System.getProperty("e2e.url")+"/administration");
+        // 5. La página muestra el Inicio del voluntario
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector(".welcome h1"),"Hola"));
+        assertTrue(browser.findElement(By.cssSelector(".welcome .eyebrow")).getText().equalsIgnoreCase("Tu espacio de voluntariado"));
+        // 4. No aparece la sección de metas de horas
+        assertFalse(browser.findElement(By.tagName("main")).getText().contains("Metas de horas por condición"));
+        // 6. Captura del flujo
+        screenshot("lab6-administracion.png");
+    }
 }
