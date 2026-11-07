@@ -329,4 +329,24 @@ class BrowserTest {
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("[role=alert]"),"Los datos ya están registrados o no son válidos"));
         assertTrue(browser.findElements(By.xpath("//*[contains(normalize-space(.),'Solicitud registrada')]")).isEmpty());
     }
+
+    @Test
+    void profileRejectsEmptyPhone() {
+        // Iniciar sesión como voluntario (correo precargado en el login)
+        var email = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("input[type=email]")));
+        email.clear(); email.sendKeys("voluntario@demo.pe"); click("Iniciar sesión");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".welcome")));
+        // Abrir Mi perfil > Modificar
+        click("Mi perfil");
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.tagName("main"), "Información personal"));
+        click("Modificar");
+        // Borrar el teléfono e intentar guardar
+        var phone = wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("phone")));
+        phone.clear();
+        click("Guardar teléfono");
+        // El navegador marca el campo como inválido y no se guarda nada
+        assertFalse((Boolean) ((JavascriptExecutor) browser).executeScript("return arguments[0].checkValidity()", phone));
+        assertFalse(browser.findElement(By.tagName("main")).getText().contains("Guardado correctamente"));
+        screenshot("lab6-perfil.png");
+    }
 }
