@@ -968,4 +968,18 @@ class WorkflowTest {
             "SELECT count(*) FROM attendance_records WHERE enrollment_id=?",
             Integer.class, enrollment));
     }
+    @Test @Transactional void materialRequestFindReadsFixture() {
+        var start = freeSlot();
+        var callout = service(start, start.plusHours(3));
+        var request = UUID.randomUUID();
+
+        db.update("""
+            INSERT INTO material_requests(id,callout_id,requested_by,name,quantity,details)
+            VALUES (?,?,?,?,?,?)
+            """, request, callout, chief, "Guantes", 3, "Talla M");
+
+        var row = new JdbcMaterialRepository(db).find(request, false);
+        assertEquals("Guantes", row.get("name"));
+        assertEquals(3, ((Number) row.get("quantity")).intValue());
+    }
 }
