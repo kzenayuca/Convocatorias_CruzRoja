@@ -313,4 +313,20 @@ class BrowserTest {
         assertTrue(browser.findElements(By.xpath("//button[text()='Adjuntar foto']")).isEmpty());
         assertTrue(browser.findElements(By.xpath("//summary[text()='Revisión de asistencia']")).isEmpty());
     }
+
+    @Test void registrationRejectsDuplicateEmail() {
+        click("Solicitar una cuenta");
+        String suffix=String.valueOf(System.nanoTime());
+        browser.findElement(By.name("name")).sendKeys("Duplicado");
+        browser.findElement(By.name("surnames")).sendKeys("Correo");
+        browser.findElement(By.name("email")).sendKeys("voluntario@demo.pe");
+        browser.findElement(By.name("document")).sendKeys(String.format("%08d",Math.abs(suffix.hashCode()%90000000)+10000000));
+        browser.findElement(By.name("occupation")).sendKeys("Estudiante");
+        browser.findElement(By.name("phone")).sendKeys("900000001");
+        browser.findElement(By.name("password")).sendKeys("convocatorias");
+        click("Solicitar cuenta");
+
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.cssSelector("[role=alert]"),"Los datos ya están registrados o no son válidos"));
+        assertTrue(browser.findElements(By.xpath("//*[contains(normalize-space(.),'Solicitud registrada')]")).isEmpty());
+    }
 }
