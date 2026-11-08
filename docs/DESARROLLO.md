@@ -71,6 +71,7 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
 - ArchUnit: dependencias y aislamiento del núcleo.
 - ORM/HTTP: PostgreSQL aislado, mapeos, restricciones, permisos y transacciones.
 - Comunicaciones: privacidad, primera lectura, rollback y entrega única concurrente.
+- Ciclo anual/graduación: unicidad concurrente, metadatos, compromisos futuros, historial y rollback conjunto.
 - Selenium: aplicación completa aislada y Chrome/ChromeDriver compatibles.
 
 Con API y frontend de pruebas ya iniciados:

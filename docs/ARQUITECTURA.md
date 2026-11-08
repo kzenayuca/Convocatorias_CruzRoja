@@ -105,6 +105,7 @@ del código de producción ni sustituir métodos del dominio por cuerpos vacíos
 | Anuncios y notificaciones | Adaptadores JPA independientes; consulta tipada de avisos |
 | Materiales y catálogo opcional | JPA sin herencia de adaptadores JDBC; nombres de actores consultados por lote |
 | Administración de metas de horas | Lecturas y escrituras JPA independientes; respuesta y auditoría conservadas |
+| Ciclo anual e historial de graduación | Adaptador JPA independiente; ciclos leídos con ORM e historial insertado mediante entidad |
 | Cuentas, convocatoria, inscripciones y asistencia | Escrituras JPA; algunas operaciones/proyecciones SQL conservadas |
 | Auditoría, códigos, mantenimiento y cierres | Operaciones históricas explícitas, pendientes de revisión por capacidad |
 
@@ -118,6 +119,13 @@ de las entidades de Administración. No se modifica el contrato numérico del c�
 Hibernate utiliza JDBC internamente: se retira el uso directo de JdbcTemplate por capacidad, no el
 driver de PostgreSQL. Flyway mantiene SQL versionado. La entrega única de avisos usa una sentencia
 nativa JPA `ON CONFLICT` contra el índice parcial: evita carreras sin añadir tablas ni bloqueos de cuentas.
+
+El registro del ciclo anual también conserva `ON CONFLICT` mediante `EntityManager`, usando la
+clave primaria existente `(user_id, year)`. La conservación de compromisos al graduarse usa un
+`INSERT ... SELECT` aditivo y atómico: solo participaciones confirmadas con inicio igual o posterior
+a la aprobación. No renueva todos los años ni reemplaza el origen, autor o fecha de ciclos existentes.
+Estas dos escrituras siguen siendo SQL nativo explícito, no operaciones ORM puras. El historial de
+graduación se agrega con Hibernate y participa en la misma transacción que ciclos y notificaciones.
 
 ## Consistencia y escalabilidad sencilla
 
