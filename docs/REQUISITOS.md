@@ -110,6 +110,20 @@ personalmente: el sistema no certifica esos antecedentes.
 - RF09: no se recibe más de lo solicitado ni se devuelve más de lo recibido; no hay reserva de stock.
 - RF10: cada persona ve sus avisos; leer conserva la primera fecha; un evento único no duplica avisos.
 
+### Evidencia de implementación
+
+Esta matriz vincula una exigencia con su implementación y una comprobación concreta. No sustituye
+la validación del usuario ni demuestra el cumplimiento completo de un laboratorio.
+Las rutas Java son relativas a `backend/src/main/java/pe/cruzroja/convocatorias`; las pruebas,
+a `backend/src/test/java/pe/cruzroja/convocatorias`.
+
+| Requisito u objetivo | Archivo que lo demuestra | Prueba/evidencia | Pendiente |
+|---|---|---|---|
+| RN24: administrar metas decimales y actualizarlas conjuntamente | `administration/infrastructure/JpaAdministrationRepository.java`, `administration/domain/HourTargets.java`, `operations/infrastructure/JpaGraduationSettings.java` | `api/AdministrationPersistenceTest`: persistencia, JSON, auditoría, rollback y lectura de metas para graduación; `api/JpaGraduationSettingsTest`: selección de condición; `api/WorkflowTest`: contrato HTTP | Validación con el usuario |
+| RF10: avisos personales y primera lectura | `communications/domain/Notification.java`, `communications/infrastructure/JpaNoticeRepository.java` | `communications/domain/NotificationTest`, `api/CommunicationPersistenceTest` | Validación con el usuario |
+| Integridad: entrega única de avisos bajo concurrencia | `communications/infrastructure/JpaNotificationPublisher.java` | `api/CommunicationPersistenceTest.concurrentUniqueDeliveryProducesOneNoticeWithoutPoisoningTransactions` | Medición con carga representativa |
+| Independencia del dominio | Clases de `domain` y contratos de repositorio | `architecture/ArchitectureTest` | Revisar responsabilidades y contratos heredados; ArchUnit no demuestra por sí solo buen diseño |
+
 ## 5. Requisitos no funcionales
 
 - Seguridad: autorización backend, sesión, CSRF, BCrypt y controles de evidencia.

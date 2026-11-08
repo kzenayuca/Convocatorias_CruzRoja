@@ -104,11 +104,16 @@ del código de producción ni sustituir métodos del dominio por cuerpos vacíos
 |---|---|
 | Anuncios y notificaciones | Adaptadores JPA independientes; consulta tipada de avisos |
 | Materiales y catálogo opcional | JPA sin herencia de adaptadores JDBC; nombres de actores consultados por lote |
-| Cuentas, convocatoria, inscripciones, asistencia y metas | Escrituras JPA; algunas operaciones/proyecciones SQL conservadas |
+| Administración de metas de horas | Lecturas y escrituras JPA independientes; respuesta y auditoría conservadas |
+| Cuentas, convocatoria, inscripciones y asistencia | Escrituras JPA; algunas operaciones/proyecciones SQL conservadas |
 | Auditoría, códigos, mantenimiento y cierres | Operaciones históricas explícitas, pendientes de revisión por capacidad |
 
 Los adaptadores restantes `Jpa* extends Jdbc*` son transitorios. No se elimina un adaptador hasta
 migrar y comprobar todos sus consumidores. Las tablas complejas se revisan después de comprender sus reglas.
+
+La consulta de metas usada por graduación (`operations/infrastructure/JpaGraduationSettings`)
+también usa JPA, mediante una proyección mínima de lectura propia de Operaciones, sin depender
+de las entidades de Administración. No se modifica el contrato numérico del cálculo de graduación.
 
 Hibernate utiliza JDBC internamente: se retira el uso directo de JdbcTemplate por capacidad, no el
 driver de PostgreSQL. Flyway mantiene SQL versionado. La entrega única de avisos usa una sentencia
