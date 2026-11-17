@@ -1,0 +1,69 @@
+@startuml
+title Convocatorias Cruz Roja - monolito modular / MVC + DDD + ORM
+allowmixing
+package "Frontend React" as frontend {
+    class ReactApp
+}
+package "operations.web" {
+    class ServicesController
+    class EnrollmentController
+}
+package "operations.application" {
+    class ServicesUseCases
+    class EnrollmentUseCases
+    class CalloutWorkflow
+    interface CalloutRepository
+}
+package "operations.domain" {
+    class Callout
+    class Enrollment
+    class TeamCapacity
+    interface EnrollmentRepository
+}
+package "operations.infrastructure" {
+    class JpaCalloutRepository
+    class JpaEnrollmentRepository
+    class JdbcCalloutRepository
+    class JdbcEnrollmentRepository
+}
+package "operations.infrastructure.persistence" {
+    class CalloutEntity <<JPA>>
+    class EnrollmentEntity <<JPA>>
+    interface CalloutJpaRepository <<SpringData>>
+}
+package "shared.infrastructure" {
+    class ManagedEntities
+}
+package bootstrap {
+    class UseCaseConfiguration
+}
+database PostgreSQL
+frontend ..> ServicesController : HTTP/JSON
+frontend ..> EnrollmentController : HTTP/JSON
+ServicesController --> ServicesUseCases
+EnrollmentController --> EnrollmentUseCases
+ServicesUseCases --> CalloutRepository
+EnrollmentUseCases --> EnrollmentRepository
+EnrollmentUseCases --> CalloutWorkflow
+CalloutWorkflow --> Callout
+Callout --> TeamCapacity
+JpaCalloutRepository --|> JdbcCalloutRepository : transición SQL
+JpaEnrollmentRepository --|> JdbcEnrollmentRepository : transición SQL
+JdbcCalloutRepository ..|> CalloutRepository
+JdbcEnrollmentRepository ..|> EnrollmentRepository
+JpaCalloutRepository --> CalloutJpaRepository
+CalloutJpaRepository --> CalloutEntity
+JpaEnrollmentRepository --> EnrollmentEntity
+EnrollmentEntity ..> Enrollment : mapea
+JpaCalloutRepository --> ManagedEntities
+JpaEnrollmentRepository --> ManagedEntities
+ManagedEntities --> PostgreSQL : Hibernate/JPA
+JdbcCalloutRepository --> PostgreSQL : proyecciones/auditoría SQL
+UseCaseConfiguration ..> ServicesUseCases : construye y decora transacciones
+UseCaseConfiguration ..> EnrollmentUseCases
+note bottom of CalloutRepository
+Contrato amplio heredado aún en application.
+No se declara migración arquitectónica completa:
+faltan tipado y división de otros puertos.
+end note
+@enduml

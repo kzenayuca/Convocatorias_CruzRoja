@@ -7,11 +7,12 @@ import java.time.LocalDateTime;
 public final class ServiceRules {
     public static final int JUSTIFICATION_DEADLINE_HOURS = 72;
 
-    private ServiceRules() { }
+    private ServiceRules() {}
 
     public static double hours(LocalDateTime checkIn, LocalDateTime checkOut) {
         if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
-            throw new IllegalArgumentException("La asistencia necesita una entrada y una salida válidas.");
+            throw new IllegalArgumentException(
+                    "La asistencia necesita una entrada y una salida válidas.");
         }
         return Duration.between(checkIn, checkOut).toSeconds() / 3600.0;
     }
@@ -24,12 +25,14 @@ public final class ServiceRules {
     }
 
     public static boolean canJustify(LocalDateTime serviceEnd, LocalDateTime submittedAt) {
-        return serviceEnd != null && submittedAt != null && !submittedAt.isBefore(serviceEnd)
-                && !isLateJustification(serviceEnd,submittedAt);
+        return serviceEnd != null
+                && submittedAt != null
+                && !submittedAt.isBefore(serviceEnd)
+                && !isLateJustification(serviceEnd, submittedAt);
     }
 
-    public static double recognizedHours(LocalDateTime start, LocalDateTime end,
-                                         LocalDateTime checkIn, LocalDateTime checkOut) {
+    public static double recognizedHours(
+            LocalDateTime start, LocalDateTime end, LocalDateTime checkIn, LocalDateTime checkOut) {
         if (checkIn == null || checkOut == null) return 0;
         var from = checkIn.isAfter(start) ? checkIn : start;
         var to = checkOut.isBefore(end) ? checkOut : end;
@@ -38,19 +41,21 @@ public final class ServiceRules {
 
     /** Más de diez minutos: el segundo 601 ya pertenece al minuto once. */
     public static long lateSeconds(LocalDateTime start, LocalDateTime checkIn) {
-        return checkIn == null || !checkIn.isAfter(start) ? 0 : Duration.between(start, checkIn).toSeconds();
+        return checkIn == null || !checkIn.isAfter(start)
+                ? 0
+                : Duration.between(start, checkIn).toSeconds();
     }
 
-    public static double tardyDeduction(LocalDateTime start, LocalDateTime end,
-                                        LocalDateTime checkIn, boolean justified) {
+    public static double tardyDeduction(
+            LocalDateTime start, LocalDateTime end, LocalDateTime checkIn, boolean justified) {
         long seconds = lateSeconds(start, checkIn);
         if (justified || seconds <= 600) return 0;
         return Math.min(seconds / 3600.0, hours(start, end)) * 2;
     }
 
     /** Base programada; los primeros diez minutos tienen tolerancia. No genera extras. */
-    public static double serviceCredit(LocalDateTime start, LocalDateTime end,
-                                        LocalDateTime checkIn, LocalDateTime checkOut) {
+    public static double serviceCredit(
+            LocalDateTime start, LocalDateTime end, LocalDateTime checkIn, LocalDateTime checkOut) {
         if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) return 0;
         var effectiveIn = lateSeconds(start, checkIn) <= 600 ? start : checkIn;
         return recognizedHours(start, end, effectiveIn, checkOut);

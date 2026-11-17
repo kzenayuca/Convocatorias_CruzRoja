@@ -1,3 +1,4 @@
+-- Initial adoption preserves the existing schema and all historical records.
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     name VARCHAR(120) NOT NULL,

@@ -2,7 +2,7 @@ name: CI · arquitectura y regresión
 
 on:
   push:
-    branches: [main, development]
+    branches: [main, development, 'refactor/**']
   pull_request:
     branches: [main, development]
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
           java-version: '17'
           cache: maven
       - name: Arquitectura, dominio, casos de uso y regresión con PostgreSQL aislado
-        run: bash ./mvnw -B -ntp test
+        run: bash ./mvnw -B -ntp -Pquality verify
       - name: Conservar ejecución y cobertura
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,6 +54,12 @@ jobs:
       - name: Validar Docker Compose sin iniciar servicios
         working-directory: .
         run: docker compose config --quiet
+      - name: Comprobar generador y referencias del modelo StarUML
+        working-directory: .
+        run: |
+          python3 -m unittest discover -s tools -p 'test_*.py'
+          python3 tools/build_model.py
+          python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
 
   frontend:
     runs-on: ubuntu-24.04
@@ -101,7 +107,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Iniciar API y frontend de pruebas
         run: |
-          (cd backend && bash ./mvnw -B -ntp spring-boot:run > ../backend-test.log 2>&1) &
+          (cd backend && bash ./mvnw -B -ntp -DskipTests package dependency:copy \
+            -Dartifact=org.jacoco:org.jacoco.agent:0.8.13:jar:runtime \
+            -DoutputDirectory=target/e2e-agent)
+          java -javaagent:backend/target/e2e-agent/org.jacoco.agent-0.8.13-runtime.jar=destfile=backend/target/jacoco-e2e.exec,append=false \
+            -jar backend/target/convocatorias-backend-2.7.0-SNAPSHOT.jar > backend-test.log 2>&1 &
+          echo $! > "$RUNNER_TEMP/convocatorias-api.pid"
           npm ci --prefix frontend --no-audit --no-fund
           (cd frontend && npm run dev -- --port 5173 --strictPort > ../frontend-test.log 2>&1) &
           curl --fail --retry 40 --retry-delay 2 --retry-connrefused http://localhost:8080/api/v1/health
@@ -109,11 +120,27 @@ jobs:
       - name: Selenium con JUnit y Chrome
         working-directory: backend
         run: bash ./mvnw -B -ntp -Dtest=BrowserTest -De2e.url=http://localhost:5173 test
-      - name: Conservar diagnóstico si falla
-        if: failure()
+      - name: Cerrar API y generar cobertura real del backend E2E
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/convocatorias-api.pid" ]; then
+            pid=$(cat "$RUNNER_TEMP/convocatorias-api.pid")
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid"
+              timeout 40 tail --pid="$pid" -f /dev/null
+            fi
+          fi
+          if [ -f backend/target/jacoco-e2e.exec ]; then
+            (cd backend && bash ./mvnw -B -ntp -Pcoverage-e2e jacoco:report@e2e-report)
+          fi
+      - name: Conservar resultados, diagnóstico y cobertura E2E
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: diagnostico-funcionales
+          name: resultados-funcionales
           path: |
             *-test.log
             backend/target/surefire-reports/
+            backend/target/site/jacoco-e2e/
+            backend/target/jacoco-e2e.exec
+            backend/target/*-failure.png

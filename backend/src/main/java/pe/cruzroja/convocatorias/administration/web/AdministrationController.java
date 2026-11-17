@@ -9,7 +9,18 @@ import pe.cruzroja.convocatorias.administration.domain.HourTargets;
 @RequestMapping("/api/v1/administration")
 public class AdministrationController {
     private final AdministrationUseCases useCases;
-    public AdministrationController(AdministrationUseCases useCases) { this.useCases=useCases; }
-    @GetMapping public Map<String,Object> settings() { return useCases.settings(); }
-    @PutMapping public void update(@RequestBody HourTargets targets) { useCases.update(targets); }
+
+    public AdministrationController(AdministrationUseCases useCases) {
+        this.useCases = useCases;
+    }
+
+    @GetMapping
+    public Map<String, Object> settings() {
+        return useCases.settings();
+    }
+
+    @PutMapping
+    public void update(@RequestBody HourTargets targets) {
+        useCases.update(targets);
+    }
 }

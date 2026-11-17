@@ -1,0 +1,42 @@
+@startuml
+left to right direction
+actor Visitante
+actor Voluntario
+actor "Responsable asignado" as Responsable
+actor Jefatura
+rectangle Convocatorias {
+    usecase "Solicitar cuenta / iniciar sesión" as Access
+    usecase "Consultar oportunidades y detalle" as Browse
+    usecase "Inscribirse y consultar participación" as Enroll
+    usecase "Registrar ciclo anual (graduados)" as Annual
+    usecase "Crear, publicar, editar o cancelar" as Manage
+    usecase "Asignar participantes y responsable" as Assign
+    usecase "Operar servicio y revisar asistencia" as Operate
+    usecase "Consultar programación" as Schedule
+    usecase "Solicitar revisión / justificación / reemplazo" as Request
+    usecase "Resolver solicitudes y aprobar reportes" as Resolve
+    usecase "Gestionar cuentas y metas" as Admin
+    usecase "Solicitar y registrar materiales" as Materials
+}
+Visitante --> Access
+Voluntario --> Browse
+Voluntario --> Enroll
+Voluntario --> Annual
+Voluntario --> Schedule
+Voluntario --> Request
+Responsable --> Operate
+Responsable --> Materials
+Responsable --> Manage
+Jefatura --> Manage
+Jefatura --> Assign
+Jefatura --> Operate
+Jefatura --> Schedule
+Jefatura --> Resolve
+Jefatura --> Admin
+Jefatura --> Materials
+note bottom of Responsable
+Función contextual de un voluntario graduado.
+No concede gestión global ni acceso a evidencias privadas ajenas.
+No se representa como rol de cuenta persistido.
+end note
+@enduml

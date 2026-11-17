@@ -7,6 +7,12 @@ import pe.cruzroja.convocatorias.membership.application.PasswordHasher;
 @Component
 public class BCryptPasswordHasher implements PasswordHasher {
     private final PasswordEncoder encoder;
-    public BCryptPasswordHasher(PasswordEncoder encoder) { this.encoder=encoder; }
-    public String encode(String password) { return encoder.encode(password); }
+
+    public BCryptPasswordHasher(PasswordEncoder encoder) {
+        this.encoder = encoder;
+    }
+
+    public String encode(String password) {
+        return encoder.encode(password);
+    }
 }

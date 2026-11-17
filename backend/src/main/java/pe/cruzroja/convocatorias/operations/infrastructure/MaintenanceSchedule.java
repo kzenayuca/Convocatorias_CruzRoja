@@ -9,7 +9,13 @@ import pe.cruzroja.convocatorias.operations.application.ServiceMaintenance;
 @EnableScheduling
 public class MaintenanceSchedule {
     private final ServiceMaintenance maintenance;
-    public MaintenanceSchedule(ServiceMaintenance maintenance) { this.maintenance=maintenance; }
-    @Scheduled(fixedDelay=30000, initialDelay=30000)
-    public void refresh() { maintenance.refresh(); }
+
+    public MaintenanceSchedule(ServiceMaintenance maintenance) {
+        this.maintenance = maintenance;
+    }
+
+    @Scheduled(fixedDelay = 30000, initialDelay = 30000)
+    public void refresh() {
+        maintenance.refresh();
+    }
 }

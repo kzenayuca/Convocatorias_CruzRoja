@@ -7,5 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class QueryController {
     @GetMapping("/api/v1/health")
-    public Map<String,String> health() { return Map.of("status","UP"); }
+    public Map<String, String> health() {
+        return Map.of("status", "UP");
+    }
 }
