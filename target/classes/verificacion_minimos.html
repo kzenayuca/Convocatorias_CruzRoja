@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verificación de mínimos</title>
+  <style>
+    :root{font-family:Arial,sans-serif;color:#292929;background:#f5f5f5}
+    body{margin:0} header{background:#d71920;color:#fff;padding:24px 6%}
+    header a{color:#fff}.container{width:88%;max-width:1100px;margin:28px auto}
+    .help{background:#fff;border-left:5px solid #d71920;padding:18px;margin-bottom:22px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:18px}
+    .card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 4px 14px #0001}
+    .status{display:inline-block;padding:7px 11px;border-radius:18px;font-weight:bold;font-size:13px}
+    .ok{background:#dff5df;color:#176817}.pending{background:#fff0c4;color:#805500}
+    .confirmed{background:#dceeff;color:#124f86}.numbers{font-size:19px;margin:18px 0}
+    .warning{min-height:22px;color:#9b1419;font-weight:bold}
+    .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+    input{width:75px;padding:9px;border:1px solid #bbb;border-radius:6px}
+    button{border:0;border-radius:6px;padding:10px 12px;cursor:pointer;font-weight:bold}
+    .primary{background:#d71920;color:#fff}.secondary{background:#e8e8e8}
+    button:disabled{opacity:.45;cursor:not-allowed}.hidden{display:none!important}
+    #message{position:fixed;right:20px;bottom:20px;background:#222;color:#fff;padding:14px;
+      border-radius:8px;display:none;max-width:360px}
+  </style>
+<link rel="stylesheet" href="sistema.css">
+</head>
+<body>
+<header>
+  <h1>Control de mínimo de participantes</h1>
+  <p>Vista de jefatura y estado público para voluntarios</p>
+<a href="/main.html" onclick="window.location.replace('/main.html');return false">← Volver directamente al inicio</a>
+</header>
+<main class="container">
+  <section class="help">
+    <strong>Prueba rápida:</strong> cambia el mínimo, agrega o elimina un participante y observa
+    cómo el estado y el aviso se actualizan. “Confirmar” solo se habilita al alcanzar el mínimo.
+  </section>
+  <div id="cards" class="grid"></div>
+</main>
+<div id="message" role="status"></div>
+<script>
+// En este módulo, incluso el botón Atrás del navegador vuelve al Home y no
+// recorre el antiguo flujo Gestión de inscripciones → Convocatorias.
+history.pushState({moduloMinimos:true}, "", window.location.href);
+window.addEventListener("popstate", () => window.location.replace("/main.html"));
+const cards = document.getElementById("cards");
+const message = document.getElementById("message");
+let sequence = 0;
+let puedeGestionar = false;
+function notify(text){message.textContent=text;message.style.display="block";
+  clearTimeout(notify.timer);notify.timer=setTimeout(()=>message.style.display="none",3500)}
+function cssStatus(c){return c.estado==="CONFIRMADA"?"confirmed":c.minimoAlcanzado?"ok":"pending"}
+function labelStatus(c){return c.estado.replaceAll("_"," ")}
+async function request(url,options={}){
+  const response=await fetch(url,{headers:{"Content-Type":"application/json"},...options});
+  if(!response.ok){const body=await response.json().catch(()=>({error:"Error"}));throw Error(body.error)}
+  return response.status===204?null:response.json();
+}
+async function load(){
+  const data=await request("/api/convocatorias/minimos");
+  cards.innerHTML="";
+  data.forEach(c=>{
+    const article=document.createElement("article");article.className="card";
+    article.innerHTML=`<h2>${c.nombre}</h2>
+      <span class="status ${cssStatus(c)}">${labelStatus(c)}</span>
+      <div class="numbers"><b>${c.inscritosActuales}</b> inscritos / mínimo
+        <b>${c.minimoParticipantes}</b></div>
+      <div class="warning">${c.aviso}</div>
+      <div class="actions ${puedeGestionar?"":"hidden"}">
+        <input id="min-${c.codigo}" type="number" min="1" value="${c.minimoParticipantes}"
+          aria-label="Mínimo">
+        <button class="secondary" data-action="minimum">Definir mínimo</button>
+        <button class="secondary" data-action="add">+ Participante</button>
+        <button class="secondary" data-action="remove">− Último</button>
+        <button class="primary" data-action="confirm" ${c.puedeConfirmar?"":"disabled"}>
+          Confirmar convocatoria</button>
+      </div>`;
+    article.querySelector('[data-action="minimum"]').onclick=()=>setMinimum(c.codigo);
+    article.querySelector('[data-action="add"]').onclick=()=>addParticipant(c);
+    article.querySelector('[data-action="remove"]').onclick=()=>removeParticipant(c.codigo);
+    article.querySelector('[data-action="confirm"]').onclick=()=>confirmCall(c.codigo);
+    cards.appendChild(article);
+  });
+}
+async function setMinimum(code){
+  const minimum=Number(document.getElementById(`min-${code}`).value);
+  try{await request(`/api/convocatorias/${code}/minimo`,
+    {method:"PATCH",body:JSON.stringify({minimoParticipantes:minimum})});
+    notify("Mínimo actualizado");await load()}catch(e){notify(e.message)}
+}
+async function addParticipant(c){
+  sequence++;const digits=String(Date.now()+sequence).slice(-8);
+  try{await request("/api/inscripciones",{method:"POST",body:JSON.stringify({
+    nombre:"Participante de prueba",dni:digits,correo:`prueba${digits}@correo.pe`,
+    telefono:"999999999",convocatoria:c.nombre,codigoConvocatoria:c.codigo,
+    experiencia:"Registro para verificar el mínimo"})});
+    notify("Participante registrado; estado recalculado");await load()}catch(e){notify(e.message)}
+}
+async function removeParticipant(code){
+  try{const all=await request("/api/inscripciones");
+    const matches=all.filter(i=>i.codigoConvocatoria===code).sort((a,b)=>b.id-a.id);
+    if(!matches.length)throw Error("No hay participantes para eliminar");
+    await request(`/api/inscripciones/${matches[0].id}`,{method:"DELETE"});
+    notify("Participante eliminado; estado recalculado");await load()}catch(e){notify(e.message)}
+}
+async function confirmCall(code){
+  try{await request(`/api/convocatorias/${code}/confirmacion`,{method:"POST"});
+    notify("Convocatoria confirmada por jefatura");await load()}catch(e){notify(e.message)}
+}
+async function iniciarVista(){
+  try{
+    const sesion=await request("/api/sesion");
+    puedeGestionar=sesion.rol==="RECLUTADOR"||sesion.rol==="JEFATURA";
+  }catch(error){
+    puedeGestionar=false;
+  }
+  await load();
+}
+iniciarVista().catch(e=>notify(e.message));
+</script>
+</body>
+</html>

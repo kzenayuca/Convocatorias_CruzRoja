@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Equipo a cargo</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#292929;background:#f4f4f4}body{margin:0}
+header{background:#d71920;color:#fff;padding:24px 5%}header a{color:#fff}
+main{width:92%;max-width:1200px;margin:28px auto}.panel{background:#fff;border-radius:12px;
+padding:20px;margin-bottom:20px;box-shadow:0 4px 15px #0001}
+.controls,.form{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label{display:flex;flex-direction:column;gap:6px;font-weight:bold;font-size:13px}
+input,select{padding:10px;border:1px solid #bbb;border-radius:7px;min-width:170px}
+button{border:0;border-radius:7px;padding:11px 14px;font-weight:bold;cursor:pointer}
+.primary{background:#d71920;color:#fff}.secondary{background:#e9e9e9}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px;border-bottom:1px solid #ddd}
+.badge{padding:6px 9px;border-radius:14px;font-size:12px;font-weight:bold}
+.graduate{background:#dceeff;color:#14518b}.training{background:#fff0c4;color:#7c5500}
+.active{color:#167019}.pending{color:#a16700}.empty{text-align:center;color:#777;padding:25px}
+#message{position:fixed;right:18px;bottom:18px;background:#222;color:#fff;padding:14px;
+border-radius:8px;display:none}.orientation{border-left:5px solid #2475b9}
+@media(max-width:700px){table{font-size:12px}.panel{overflow:auto}}
+</style>
+<link rel="stylesheet" href="sistema.css">
+</head>
+<body>
+<header><h1>Equipo a cargo</h1><p>Voluntarios asignados por convocatoria y orientación</p>
+<a href="/main.html" onclick="window.location.replace('/main.html');return false">← Volver directamente al inicio</a></header>
+<main>
+<section class="panel controls">
+ <label>Convocatoria<select id="call">
+  <option value="donacion">Campaña de Donación de Sangre</option>
+  <option value="emergencias">Apoyo en Emergencias</option>
+  <option value="auxilios">Capacitación en Primeros Auxilios</option>
+  <option value="medica">Campaña Médica Comunitaria</option>
+ </select></label>
+ <button class="secondary" id="reload">Actualizar lista</button>
+</section>
+<section class="panel">
+ <h2>Agregar voluntario al equipo</h2>
+ <form id="form" class="form">
+  <label>Nombre<input id="name" required></label>
+  <label>Perfil<select id="profile"><option>GRADUADO</option><option>EN_FORMACION</option></select></label>
+  <label>Habilidad o especialidad<input id="skill" required></label>
+  <label>Estado<select id="status"><option>ACTIVO</option><option>PENDIENTE</option></select></label>
+  <label>Graduado orientador<select id="mentor"><option value="">Sin asignar</option></select></label>
+  <button class="primary" type="submit">Agregar al equipo</button>
+ </form>
+</section>
+<section class="panel">
+ <h2>Lista de voluntarios asignados</h2>
+ <table><thead><tr><th>Nombre</th><th>Perfil</th><th>Especialidad</th>
+ <th>Participación</th><th>Orientador</th><th>Acciones</th></tr></thead>
+ <tbody id="rows"></tbody></table>
+</section>
+<section class="panel orientation">
+ <h2>Personas que debe orientar el voluntario graduado</h2>
+ <div class="controls"><label>Graduado<select id="graduate"></select></label>
+ <button id="viewOrientation" class="primary">Revisar orientandos</button></div>
+ <div id="orientationResult" class="empty">Selecciona un graduado.</div>
+</section>
+</main><div id="message"></div>
+<script>
+const call=document.getElementById("call"),rows=document.getElementById("rows");
+const mentor=document.getElementById("mentor"),graduate=document.getElementById("graduate");
+const message=document.getElementById("message");let team=[];
+function notify(text){message.textContent=text;message.style.display="block";
+ clearTimeout(notify.t);notify.t=setTimeout(()=>message.style.display="none",3500)}
+async function request(url,options={}){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...options});
+ if(!r.ok){const b=await r.json().catch(()=>({error:"Error"}));throw Error(b.error)}
+ return r.status===204?null:r.json()}
+function esc(v){const d=document.createElement("div");d.textContent=v??"";return d.innerHTML}
+async function load(){
+ team=await request(`/api/convocatorias/${call.value}/equipo`);
+ rows.innerHTML=team.length?"":'<tr><td colspan="6" class="empty">No hay voluntarios asignados.</td></tr>';
+ team.forEach(i=>{const tr=document.createElement("tr");tr.innerHTML=
+ `<td><b>${esc(i.nombreVoluntario)}</b></td>
+ <td><span class="badge ${i.perfil==="GRADUADO"?"graduate":"training"}">${i.perfil.replace("_"," ")}</span></td>
+ <td>${esc(i.habilidadEspecialidad)}</td><td class="${i.estadoParticipacion.toLowerCase()}">${i.estadoParticipacion}</td>
+ <td>${esc(i.nombreMentor||"—")}</td><td><button class="secondary">Retirar</button></td>`;
+ tr.querySelector("button").onclick=()=>removeMember(i.id);rows.appendChild(tr)});
+ const graduates=team.filter(i=>i.perfil==="GRADUADO"&&i.estadoParticipacion==="ACTIVO");
+ mentor.innerHTML='<option value="">Sin asignar</option>'+graduates.map(
+   g=>`<option value="${g.id}">${esc(g.nombreVoluntario)}</option>`).join("");
+ graduate.innerHTML=graduates.map(g=>`<option value="${g.id}">${esc(g.nombreVoluntario)}</option>`).join("");
+ document.getElementById("orientationResult").textContent="Selecciona un graduado.";
+}
+async function removeMember(id){try{await request(`/api/convocatorias/${call.value}/equipo/${id}`,{method:"DELETE"});
+ notify("Voluntario retirado; lista actualizada");await load()}catch(e){notify(e.message)}}
+document.getElementById("form").onsubmit=async e=>{e.preventDefault();try{
+ const profile=document.getElementById("profile").value;
+ await request(`/api/convocatorias/${call.value}/equipo`,{method:"POST",body:JSON.stringify({
+ nombreVoluntario:document.getElementById("name").value,perfil:profile,
+ habilidadEspecialidad:document.getElementById("skill").value,
+ estadoParticipacion:document.getElementById("status").value,
+ mentorId:profile==="EN_FORMACION"&&mentor.value?Number(mentor.value):null})});
+ e.target.reset();notify("Voluntario agregado; lista actualizada");await load()}catch(err){notify(err.message)}};
+document.getElementById("viewOrientation").onclick=async()=>{if(!graduate.value)return notify("No hay graduados activos");
+ try{const data=await request(`/api/convocatorias/${call.value}/equipo/mentores/${graduate.value}/orientandos`);
+ document.getElementById("orientationResult").innerHTML=data.length?data.map(i=>
+ `<p><b>${esc(i.nombreVoluntario)}</b> — ${esc(i.habilidadEspecialidad)} — ${i.estadoParticipacion}</p>`).join("")
+ :"<p>No tiene voluntarios asignados para orientar.</p>"}catch(e){notify(e.message)}};
+call.onchange=load;document.getElementById("reload").onclick=load;
+document.getElementById("profile").onchange=e=>mentor.disabled=e.target.value==="GRADUADO";
+load().catch(e=>notify(e.message));
+</script></body></html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Registro de postulantes</title>
+  <style>
+    :root{font-family:Arial,sans-serif;color:#292929;background:#f5f5f5}
+    *{box-sizing:border-box} body{margin:0} header{background:#d71920;color:#fff;padding:24px 5%}
+    header div{max-width:1100px;margin:auto;display:flex;justify-content:space-between;align-items:center}
+    a{color:inherit} main{max-width:1100px;margin:28px auto;padding:0 18px}
+    .grid{display:grid;grid-template-columns:minmax(280px,390px) 1fr;gap:22px}
+    section{background:#fff;border-radius:12px;padding:22px;box-shadow:0 2px 10px #0001}
+    label{display:block;font-weight:700;margin-top:12px} input,select{width:100%;padding:10px;margin-top:5px;border:1px solid #bbb;border-radius:7px}
+    button{margin-top:18px;width:100%;padding:12px;border:0;border-radius:7px;background:#d71920;color:#fff;font-weight:700;cursor:pointer}
+    table{width:100%;border-collapse:collapse} th,td{text-align:left;padding:10px;border-bottom:1px solid #ddd;font-size:14px}
+    .mensaje{margin:12px 0;padding:10px;border-radius:7px;display:none}.ok{display:block;background:#def5e4;color:#17652b}.error{display:block;background:#fde2e2;color:#9b1515}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}.tabla{overflow:auto}}
+  </style>
+<link rel="stylesheet" href="sistema.css">
+</head>
+<body>
+<header><div><div><h1>Registro de postulantes</h1><p>Postulación de voluntarios a convocatorias activas</p></div><a href="/main.html" onclick="window.location.replace('/main.html');return false">← Volver directamente al inicio</a></div></header>
+<main>
+  <div id="mensaje" class="mensaje" role="status"></div>
+  <div class="grid">
+    <section>
+      <h2>Nueva postulación</h2>
+      <form id="formulario">
+        <label>DNI<input name="dni" required maxlength="12"></label>
+        <label>Nombre completo<input name="nombreCompleto" required></label>
+        <label>Nivel de formación<select name="nivelFormacion"><option value="EN_FORMACION">En formación</option><option value="GRADUADO">Graduado</option></select></label>
+        <label>Especialidad<input name="especialidad" required></label>
+        <label>Habilidades (separadas por comas)<input name="habilidades" required></label>
+        <label>Disponibilidad<input name="disponibilidad" required placeholder="Ej. fines de semana"></label>
+        <label>Convocatoria<select name="codigoConvocatoria" id="convocatoria" required></select></label>
+        <button>Registrar postulante</button>
+      </form>
+    </section>
+    <section class="tabla">
+      <h2>Postulantes registrados</h2>
+      <table><thead><tr><th>Voluntario</th><th>Perfil</th><th>Convocatoria</th><th>Estado</th></tr></thead><tbody id="filas"></tbody></table>
+    </section>
+  </div>
+</main>
+<script>
+const mensaje=document.querySelector('#mensaje');
+async function json(url,op={}){const r=await fetch(url,op);const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'No se pudo completar la operación');return data}
+async function cargar(){
+  const [convocatorias,postulaciones]=await Promise.all([json('/api/convocatorias/minimos'),json('/api/postulaciones')]);
+  document.querySelector('#convocatoria').innerHTML=convocatorias.map(c=>`<option value="${c.codigo}">${c.nombre}</option>`).join('');
+  document.querySelector('#filas').innerHTML=postulaciones.length?postulaciones.map(p=>`<tr><td><b>${p.nombreCompleto}</b><br>${p.dni}</td><td>${p.nivelFormacion.replace('_',' ')}<br>${p.especialidad}<br>${p.habilidades.join(', ')}</td><td>${p.codigoConvocatoria}</td><td>${p.estado}</td></tr>`).join(''):'<tr><td colspan="4">Todavía no hay postulantes.</td></tr>';
+}
+document.querySelector('#formulario').addEventListener('submit',async e=>{
+  e.preventDefault(); mensaje.className='mensaje';
+  try{const body=Object.fromEntries(new FormData(e.target));await json('/api/postulaciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});e.target.reset();mensaje.textContent='Postulante registrado correctamente.';mensaje.className='mensaje ok';await cargar()}
+  catch(error){mensaje.textContent=error.message;mensaje.className='mensaje error'}
+});
+cargar().catch(error=>{mensaje.textContent=error.message;mensaje.className='mensaje error'});
+</script>
+</body>
+</html>

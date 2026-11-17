@@ -1,0 +1,5 @@
+bc1_usuarios/dominio/entities/PostulacionTest.class
+bc2_convocatorias/dominio/entities/UsuarioAccesoTest.class
+bc2_convocatorias/dominio/entities/EquipoAsignadoTest.class
+bc2_convocatorias/dominio/entities/ConvocatoriaTest.class
+bc2_convocatorias/dominio/valueobjects/HorarioTest.class

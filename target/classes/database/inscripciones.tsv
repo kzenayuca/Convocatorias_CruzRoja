@@ -1,0 +1,9 @@
+id	nombre	dni	correo	telefono	convocatoria	codigoConvocatoria	fechaInscripcion	estado	experiencia
+1	Ana Torres	74851236	ana.torres@gmail.com	987 654 321	Campaña de Donación de Sangre	donacion	2026-07-18	PENDIENTE	Apoyo en campañas comunitarias
+2	Luis Medina	70643128	luis.medina@gmail.com	965 438 112	Apoyo en Emergencias	emergencias	2026-07-17	APROBADA	Voluntario en primeros auxilios
+3	Mariela Quispe	72104589	mariela.quispe@gmail.com	953 290 681	Capacitación en Primeros Auxilios	auxilios	2026-07-17	PENDIENTE	Estudiante de enfermería
+4	Carlos Huamán	73421895	carlos.huaman@gmail.com	944 763 210	Campaña de Donación de Sangre	donacion	2026-07-16	RECHAZADA	Sin experiencia previa
+5	Elena Ramos	71896542	elena.ramos@gmail.com	979 145 830	Campaña Médica Comunitaria	medica	2026-07-15	APROBADA	Técnica en farmacia
+6	Jorge Salazar	76214509	jorge.salazar@gmail.com	932 870 145	Apoyo en Emergencias	emergencias	2026-07-15	CANCELADA	Brigadista universitario
+7	Paola Flores	70125843	paola.flores@gmail.com	981 362 709	Campaña Médica Comunitaria	medica	2026-07-14	PENDIENTE	Estudiante de medicina
+8	Diego Valdivia	75963214	diego.valdivia@gmail.com	946 205 873	Capacitación en Primeros Auxilios	auxilios	2026-07-13	APROBADA	Bombero voluntario

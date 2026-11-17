@@ -1,0 +1,5 @@
+codigo	nombre	minimoParticipantes	confirmada	fecha	lugar	horaInicio	horaFin	requisitos
+donacion	Campaña de Donación de Sangre	3	false	2026-07-25	Arequipa - Cercado	08:00	14:00	Atención al público|Trabajo en equipo
+emergencias	Apoyo en Emergencias	2	false	2026-07-28	Camaná	07:30	17:00	Primeros auxilios|Disponibilidad inmediata
+auxilios	Capacitación en Primeros Auxilios	2	false	2026-07-30	Yanahuara	09:00	13:00	RCP|Comunicación
+medica	Campaña Médica Comunitaria	3	false	2026-08-05	Cerro Colorado			Formación en salud|Disponibilidad de campo

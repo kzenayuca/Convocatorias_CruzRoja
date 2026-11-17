@@ -1,0 +1,5 @@
+id	convocatoria	nombre	perfil	habilidad	estado	mentorId
+1	donacion	Rosa Mendoza	GRADUADO	Enfermería	ACTIVO	
+2	donacion	Miguel Torres	EN_FORMACION	Toma de signos vitales	ACTIVO	1
+3	medica	Lucía Vargas	GRADUADO	Medicina general	ACTIVO	
+4	medica	José Paredes	EN_FORMACION	Primeros auxilios	PENDIENTE	3
