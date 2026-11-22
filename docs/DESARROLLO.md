@@ -54,6 +54,8 @@ Desde `frontend`:
 
 ```bash
 npm ci
+npm test
+npm run check
 npm run build
 ```
 
@@ -67,6 +69,11 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
 
 ## Pruebas
 
+- Frontend: Vitest + jsdom + React Testing Library, sin API ni base de datos reales.
+  `npm test` ejecuta una vez; `npm run test:watch` observa cambios localmente.
+  Las pruebas de caracterización protegen `useData`, formularios y acciones antes de refactorizar.
+  Las llamadas `fetch` se simulan y restauran por prueba.
+  Actions ejecuta la suite en el job frontend con Node 22.
 - Dominio/aplicación: reglas y coordinación sin servidor.
 - ArchUnit: dependencias y aislamiento del núcleo.
 - ORM/HTTP: PostgreSQL aislado, mapeos, restricciones, permisos y transacciones.
