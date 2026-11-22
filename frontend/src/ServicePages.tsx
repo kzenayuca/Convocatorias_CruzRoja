@@ -3,10 +3,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, changed, date, delay, localInput, manager, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice, Field, PdfDownload, saveSucceeded, useRequestFocus } from './components';
 import { AnnualEnrollmentPanel } from './AnnualPages';
+import { categoryNames as categories, calloutStatusNames as statuses, positionNames } from './callouts/calloutLabels';
 
-export const positionNames: Record<string, string> = { TOTAL: 'Total de voluntarios', RESPONSABLE: 'Responsable', SOCORRISTA: 'Voluntario · graduado o en formación', GRADUADO: 'Voluntario graduado', FORMACION: 'En formación · solo reemplazo histórico', RADIOPERADOR: 'Radioperador', PILOTO: 'Piloto' };
-const statuses: Record<string, string> = { BORRADOR: 'Borrador', ABIERTA: 'Abierta', CERRADA: 'Completa', CANCELADA: 'Cancelada', FINALIZADA: 'Finalizada', PUBLICADA: 'Publicada (histórico)', CONFIRMADA: 'Confirmada (histórico)' };
-const categories: Record<string, string> = { E: 'E · Externo', I: 'I · Interno', G: 'G · Guardia' };
+export { positionNames };
+const DEFAULT_CATEGORY = 'I';
 const callFields: Field[] = [
   { name: 'category', label: 'Etiqueta de servicio · código automático al crear', options: Object.entries(categories).map(([value, label]) => ({ value, label })) },
   { name: 'title', label: 'Título', max: 150 }, { name: 'description', label: 'Descripción', type: 'textarea', max: 5000 },
