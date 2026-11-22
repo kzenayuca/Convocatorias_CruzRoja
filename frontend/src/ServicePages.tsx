@@ -4,6 +4,8 @@ import { api, changed, date, delay, localInput, manager, Row, Session, useData }
 import { Action, DataForm, ErrorNotice, Field, PdfDownload, saveSucceeded, useRequestFocus } from './components';
 import { AnnualEnrollmentPanel } from './AnnualPages';
 import { categoryNames as categories, calloutStatusNames as statuses, positionNames } from './callouts/calloutLabels';
+import { canAssignDirectly, canEditCallout, canEnroll, isChief, parseRequirements } from './callouts/calloutRules';
+import { CalloutHero, EnrollmentSection, ServiceInformation } from './callouts/CalloutDetailSections';
 
 export { positionNames };
 const DEFAULT_CATEGORY = 'I';
@@ -43,46 +45,128 @@ export function CalloutsPage({ user, history = false }: { user: Session; history
     </article>)}</div>{!loading && !filtered.length && <div className="empty">No hay convocatorias para mostrar.</div>}
   </>;
 }
-export function DetailPage({ user }: { user: Session }) {
-  const { id } = useParams(); const { data: c, error, loading } = useData<Row>(`/callouts/${id}`, {});
-  const [checked, setChecked] = useState<number[]>([]); const [edit, setEdit] = useState(false);
-  useEffect(() => { setChecked([]); setEdit(false); }, [id, c.requirements]);
-  if (loading && !c.id) return <p>Cargando convocatoria…</p>;
+export function DetailPage({ user }: Readonly<{ user: Session }>) {
+  const { id } = useParams();
+  const calloutId = id!;
+  const { data: callout, error, loading } = useData<Row>(`/callouts/${calloutId}`, {});
+
+  if (loading && !callout.id) return <p>Cargando convocatoria…</p>;
   if (error) return <ErrorNotice message={error}/>;
-  const requirements = String(c.requirements ?? '').split('\n').filter(Boolean);
-  const future = new Date(c.start_at).getTime() > Date.now();
-  const available = user.role !== 'JEFATURA' && ['ABIERTA', 'CERRADA'].includes(c.status) && future && (!c.my_enrollment || ['PENDIENTE', 'EXPIRADA'].includes(c.my_enrollment.status));
-  const editable = c.can_edit && future && !c.opened_at && ['BORRADOR', 'ABIERTA', 'CERRADA'].includes(c.status);
-  const positionOptions = (c.eligible_positions ?? []).map((p: string) => ({ value: p, label: positionNames[p] }));
-  return <div className="detail-page"><Link className="link" to="/callouts">← Volver a convocatorias</Link>
-    <section className="service-hero"><div className="card-topline"><p className="eyebrow">{c.service_code || 'Código pendiente de jefatura'} · {c.area}</p><span className="badge">{statuses[c.status] || c.status}</span></div>
-      <h1>{c.title}</h1><p className="lead">{c.description}</p><div className="toolbar"><span className="pill">{categories[c.service_category] || 'Categoría histórica'}</span><span className="pill">{c.service_type}</span><span className="pill">{c.execution}</span><span className="pill">Cobertura {c.coverage === 'COMPLETA' ? 'completa' : 'pendiente'}</span></div>
-      {c.my_enrollment && <p className="participation-note">Tu inscripción: <b>{c.my_enrollment.status === 'CONFIRMADA' ? 'ACEPTADA' : c.my_enrollment.status}</b> · {positionNames[c.my_enrollment.position]} <Link className="link" to="/services">Consultar mi inscripción →</Link></p>}
+
+  const positionOptions = (callout.eligible_positions ?? []).map((position: string) => ({ value: position, label: positionNames[position] }));
+  return (
+    <div className="detail-page">
+      <Link className="link" to="/callouts">← Volver a convocatorias</Link>
+      <CalloutHero callout={callout}/>
+      <ServiceInformation callout={callout}/>
+      <VacanciesSection positions={callout.positions ?? []}/>
+      <EnrollmentSection
+        calloutId={calloutId}
+        requirements={parseRequirements(callout.requirements)}
+        positionOptions={positionOptions}
+        available={canEnroll(user, callout)}
+        alreadyEnrolled={!!callout.my_enrollment}
+      />
+      {(callout.has_photo || callout.can_upload_photo) && <TeamPhotoSection calloutId={calloutId} callout={callout}/>}
+      {callout.can_view_team && <ServiceManagementArea calloutId={calloutId} user={user} callout={callout}/>}
+    </div>
+  );
+}
+
+function VacanciesSection({ positions }: Readonly<{ positions: Row[] }>) {
+  return (
+    <section className="section-block">
+      <h2>Vacantes disponibles</h2>
+      <p className="muted">
+        Cada persona cuenta una sola vez. Responsable, piloto y radioperador están incluidos en el total. El mínimo de graduados
+        y las funciones son requisitos dentro de ese total, no plazas adicionales. Voluntario admite graduados y personas en
+        formación; voluntario graduado, solo graduados.
+      </p>
+      <Positions positions={positions}/>
     </section>
-    <section className="section-block"><h2>Información del servicio</h2><dl className="info-grid">
-      <div><dt>Inicio · hora de Perú</dt><dd>{date(c.start_at)}</dd></div><div><dt>Fin · hora de Perú</dt><dd>{date(c.end_at)}</dd></div>
-      <div><dt>Lugar</dt><dd>{c.location}</dd></div><div><dt>Horas programadas</dt><dd>{Number(c.planned_hours).toLocaleString('es-PE')} h</dd></div>
-      <div><dt>Responsable</dt><dd>{c.responsible_name || 'Sin asignar'}</dd></div><div><dt>Contacto</dt><dd>{c.contact || 'Consultar a jefatura'}</dd></div>
-      <div><dt>Inscripciones hasta</dt><dd>{date(c.deadline)}</dd></div>
-    </dl>{c.observations && <div className="soft-panel"><h3>Indicaciones</h3><p className="multiline">{c.observations}</p></div>}</section>
-    <section className="section-block"><h2>Vacantes disponibles</h2><p className="muted">Cada persona cuenta una sola vez. Responsable, piloto y radioperador están incluidos en el total. El mínimo de graduados y las funciones son requisitos dentro de ese total, no plazas adicionales. Voluntario admite graduados y personas en formación; voluntario graduado, solo graduados.</p><Positions positions={c.positions ?? []}/></section>
-    <section className="section-block"><h2>Verificación de requisitos</h2><p>Los conocimientos, cursos y demás condiciones se definen en esta convocatoria; jefatura verifica las declaraciones. El sistema comprueba condición de graduación, habilitaciones, cupo y horario.</p>
-      {available && positionOptions.length ? <>{requirements.map((r, i) => <label className="requirement" key={i}><input type="checkbox" checked={checked.includes(i)} onChange={e => setChecked(old => e.target.checked ? [...old, i] : old.filter(x => x !== i))}/>{r}</label>)}
-        {checked.length === requirements.length ? <DataForm fields={[{ name: 'position', label: 'Puesto', options: positionOptions }]} label="Inscribirme" submit={v => api(`/callouts/${id}/enrollments`, 'POST', { requirementsAccepted: true, position: v.position })}/> : <p>Marca todos los requisitos para continuar.</p>}
-        <p className="muted">Inscripción automática para cuentas validadas. Los reemplazos se solicitan en Mis servicios y solo Jefatura puede asignarlos.</p>
-      </> : <><ul className="requirements-list">{requirements.map((r, i) => <li key={i}>{r}</li>)}</ul><p className="muted">{c.my_enrollment ? 'Consulta el estado de tu participación en Mis servicios.' : 'No hay una inscripción disponible para tu perfil en este momento.'}</p></>}
+  );
+}
+
+function TeamPhotoSection({ calloutId, callout }: Readonly<{ calloutId: string; callout: Row }>) {
+  const photoUrl = `/api/v1/callouts/${calloutId}/photo`;
+  const isClosed = !!callout.closed_at || callout.status === 'FINALIZADA';
+  return (
+    <section className="section-block">
+      <h2>Recuerdo del equipo</h2>
+      {callout.has_photo && (
+        <details className="photo-view">
+          <summary>Ver foto del equipo</summary>
+          <a href={photoUrl} target="_blank" rel="noreferrer">
+            <img loading="lazy" src={`${photoUrl}?v=${encodeURIComponent(callout.photo_uploaded_at ?? '')}`} alt={`Equipo de ${callout.title}`}/>
+          </a>
+        </details>
+      )}
+      {callout.can_upload_photo && <PhotoAttachment id={calloutId} hasPhoto={callout.has_photo} closed={isClosed}/>}
     </section>
-    {(c.has_photo || c.can_upload_photo) && <section className="section-block"><h2>Recuerdo del equipo</h2>{c.has_photo && <details className="photo-view"><summary>Ver foto del equipo</summary><a href={`/api/v1/callouts/${id}/photo`} target="_blank" rel="noreferrer"><img loading="lazy" src={`/api/v1/callouts/${id}/photo?v=${encodeURIComponent(c.photo_uploaded_at ?? '')}`} alt={`Equipo de ${c.title}`}/></a></details>}{c.can_upload_photo && <PhotoAttachment id={id!} hasPhoto={c.has_photo} closed={!!c.closed_at || c.status === 'FINALIZADA'}/>}</section>}
-    {c.can_view_team && <section className="management-area" aria-label="Gestión del servicio"><h2>Gestión del servicio</h2><p className="muted">Equipo, asignaciones y operación. Estos controles solo aparecen para jefatura o el responsable de esta convocatoria.</p>
-    {editable && <details className="section-block management"><summary>Gestionar convocatoria</summary><div className="toolbar">{c.status === 'BORRADOR' && <Action path={`/callouts/${id}/status`} body={{ status: 'ABIERTA' }}>Publicar</Action>}<button className="button secondary" onClick={() => setEdit(!edit)}>Editar datos</button><Action path={`/callouts/${id}/status`} body={{ status: 'CANCELADA' }}>Cancelar convocatoria</Action></div>
-      {!c.service_code && user.role === 'JEFATURA' && <p>Borrador histórico sin código: selecciona la categoría en Editar datos y guarda para generar su código una sola vez.</p>}
-      {edit && <DataForm fields={callFields.filter(f => f.name !== 'category' || !c.service_code && user.role === 'JEFATURA')} initial={{ ...c, category: c.service_category || 'I', serviceType: c.service_type, start: localInput(c.start_at), end: localInput(c.end_at), deadline: localInput(c.deadline), totalVolunteers: c.total_volunteers, graduateSlots: c.graduate_slots, radioSlots: c.radio_slots, pilotSlots: c.pilot_slots }} submit={v => api(`/callouts/${id}`, 'PUT', { ...v, category: c.service_category || v.category || 'I', code: c.service_code })} onSaved={() => setEdit(false)}/>}
-    </details>}
-    {user.role === 'JEFATURA' && editable && <ResponsiblePanel id={id!} current={c.responsible_id}/>}
-    {user.role === 'JEFATURA' && editable && ['ABIERTA', 'CERRADA'].includes(c.status) && new Date(c.deadline).getTime() > Date.now() && <AssignmentPanel id={id!} requirements={c.requirements}/>}
-    <TeamPage id={id!} user={user} callout={c}/>
-    </section>}
-  </div>;
+  );
+}
+
+type ManagementProps = Readonly<{ calloutId: string; user: Session; callout: Row }>;
+
+function ServiceManagementArea({ calloutId, user, callout }: ManagementProps) {
+  const editable = canEditCallout(callout);
+  return (
+    <section className="management-area" aria-label="Gestión del servicio">
+      <h2>Gestión del servicio</h2>
+      <p className="muted">Equipo, asignaciones y operación. Estos controles solo aparecen para jefatura o el responsable de esta convocatoria.</p>
+      {editable && <CalloutAdministration calloutId={calloutId} user={user} callout={callout}/>}
+      {isChief(user) && editable && <ResponsiblePanel id={calloutId} current={callout.responsible_id}/>}
+      {canAssignDirectly(user, callout, editable) && <AssignmentPanel id={calloutId} requirements={callout.requirements}/>}
+      <TeamPage id={calloutId} user={user} callout={callout}/>
+    </section>
+  );
+}
+
+function CalloutAdministration({ calloutId, user, callout }: ManagementProps) {
+  const [editing, setEditing] = useState(false);
+  useEffect(() => setEditing(false), [calloutId]);
+  const statusPath = `/callouts/${calloutId}/status`;
+  const canChooseCategory = !callout.service_code && isChief(user);
+  return (
+    <details className="section-block management">
+      <summary>Gestionar convocatoria</summary>
+      <div className="toolbar">
+        {callout.status === 'BORRADOR' && <Action path={statusPath} body={{ status: 'ABIERTA' }}>Publicar</Action>}
+        <button className="button secondary" onClick={() => setEditing(!editing)}>Editar datos</button>
+        <Action path={statusPath} body={{ status: 'CANCELADA' }}>Cancelar convocatoria</Action>
+      </div>
+      {canChooseCategory && <p>Borrador histórico sin código: selecciona la categoría en Editar datos y guarda para generar su código una sola vez.</p>}
+      {editing && (
+        <DataForm
+          fields={callFields.filter(field => field.name !== 'category' || canChooseCategory)}
+          initial={toCalloutForm(callout)}
+          submit={values => api(`/callouts/${calloutId}`, 'PUT', toCalloutUpdateRequest(callout, values))}
+          onSaved={() => setEditing(false)}
+        />
+      )}
+    </details>
+  );
+}
+
+/** Traduce la proyección del backend (snake_case) a los nombres del formulario (camelCase). */
+function toCalloutForm(callout: Row): Row {
+  return {
+    ...callout,
+    category: callout.service_category || DEFAULT_CATEGORY,
+    serviceType: callout.service_type,
+    start: localInput(callout.start_at),
+    end: localInput(callout.end_at),
+    deadline: localInput(callout.deadline),
+    totalVolunteers: callout.total_volunteers,
+    graduateSlots: callout.graduate_slots,
+    radioSlots: callout.radio_slots,
+    pilotSlots: callout.pilot_slots,
+  };
+}
+
+/** La categoría ya asignada no cambia: fija el código generado. */
+function toCalloutUpdateRequest(callout: Row, values: Row): Row {
+  return { ...values, category: callout.service_category || values.category || DEFAULT_CATEGORY, code: callout.service_code };
 }
 function ResponsiblePanel({ id, current }: { id: string; current?: string }) {
   const candidates = useData<Row[]>(`/callouts/${id}/responsible-candidates`, []);
