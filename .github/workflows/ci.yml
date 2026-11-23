@@ -78,6 +78,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Pruebas de caracterización y regresión frontend
         run: npm test
+      - name: Formato de páginas y componentes refactorizados
+        run: npm run format:check
       - name: Comprobar TypeScript y construir frontend
         run: npm run build
 

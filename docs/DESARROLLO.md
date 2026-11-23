@@ -56,6 +56,7 @@ Desde `frontend`:
 npm ci
 npm test
 npm run check
+npm run format:check
 npm run build
 ```
 
@@ -73,7 +74,9 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
   `npm test` ejecuta una vez; `npm run test:watch` observa cambios localmente.
   Las pruebas de caracterización protegen `useData`, formularios y acciones antes de refactorizar.
   Las llamadas `fetch` se simulan y restauran por prueba.
-  Actions ejecuta la suite en el job frontend con Node 22.
+  Actions ejecuta la suite y el formato en el job frontend con Node 22.
+- Formato de los módulos de páginas intervenidos: `npm run format:pages`.
+  El resto de módulos no se reformatea incidentalmente.
 - Dominio/aplicación: reglas y coordinación sin servidor.
 - Contratos HTTP: `api<T>()` devuelve `unknown` si el consumidor no declara un tipo.
   CSRF y errores se validan en ejecución; un genérico TypeScript no valida JSON externo.
