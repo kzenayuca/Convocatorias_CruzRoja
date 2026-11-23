@@ -7,6 +7,15 @@ import { HoursProgress } from './HoursProgress';
 import { JustificationForm, ReplacementResolution } from './JustificationForms';
 import { AnnualReport } from './AnnualPages';
 import { useRequest } from './useRequest';
+import {
+  canRequestReplacement,
+  CURRENT_ATTENDANCE_POLICY_VERSION,
+  isAttendanceWindow,
+  isJustificationWindow,
+  JUSTIFICATION_DEADLINE_HOURS,
+  LATE_TOLERANCE_MINUTES,
+  REPLACEMENT_NOTICE_HOURS,
+} from './attendanceRules';
 
 export function ServicesPage() {
   const enrollments = useData<Row[]>('/enrollments', []);
@@ -95,12 +104,12 @@ export function ServicesPage() {
             new Date(e.start_at).getTime() > Date.now() && (
               <>
                 <p>
-                  Solicita el reemplazo con al menos 48 horas de anticipación. Solo Jefatura lo
-                  asigna y resuelve; mientras tanto sigues inscrito.
+                  Solicita el reemplazo con al menos {REPLACEMENT_NOTICE_HOURS} horas de
+                  anticipación. Solo Jefatura lo asigna y resuelve; mientras tanto sigues inscrito.
                 </p>
                 {e.cancellation_requested_at ? (
                   <p role="status">Solicitud pendiente de gestión: {e.cancellation_reason}</p>
-                ) : new Date(e.start_at).getTime() - Date.now() >= 48 * 3600000 ? (
+                ) : canRequestReplacement(e.start_at) ? (
                   <details>
                     <summary>Solicitar cancelación con reemplazo</summary>
                     <JustificationForm replacement path={`/enrollments/${e.id}/cancel-request`} />
@@ -119,8 +128,7 @@ export function ServicesPage() {
                 {!e.month_closed &&
                   e.opened_at &&
                   !e.closed_at &&
-                  Date.now() >= new Date(e.start_at).getTime() - 3600000 &&
-                  Date.now() <= new Date(e.end_at).getTime() + 3600000 && (
+                  isAttendanceWindow(e.start_at, e.end_at) && (
                     <>
                       <Action path={`/enrollments/${e.id}/mark`} body={{ action: 'ENTRADA' }}>
                         Marcar entrada
@@ -157,8 +165,9 @@ export function ServicesPage() {
       ))}
       <h2>Asistencia y horas</h2>
       <p>
-        Tolerancia de 10 minutos; más de 10:00 min genera descuento de dos veces el retraso. La
-        justificación aprobada elimina ese descuento, no acredita tiempo no trabajado.
+        Tolerancia de {LATE_TOLERANCE_MINUTES} minutos; más de {LATE_TOLERANCE_MINUTES}:00 min
+        genera descuento de dos veces el retraso. La justificación aprobada elimina ese descuento,
+        no acredita tiempo no trabajado.
       </p>
       {attendance.data.map((a) => (
         <details className="card" data-focus={`attendance:${a.id}`} key={a.id}>
@@ -171,7 +180,7 @@ export function ServicesPage() {
           <p>
             Retraso: {delay(a.late_minutes)} · Deducción vigente: {a.deduction} h
           </p>
-          {a.policy_version < 2 && (
+          {a.policy_version < CURRENT_ATTENDANCE_POLICY_VERSION && (
             <p>Registro histórico: conserva el cálculo anterior hasta revisión administrativa.</p>
           )}
           <p>{a.observations}</p>
@@ -199,16 +208,17 @@ export function ServicesPage() {
               ajuste separado.
             </p>
           )}
-          {(a.status === 'AUSENTE' || (a.policy_version >= 2 && a.late_minutes > 10)) &&
+          {(a.status === 'AUSENTE' ||
+            (a.policy_version >= CURRENT_ATTENDANCE_POLICY_VERSION &&
+              a.late_minutes > LATE_TOLERANCE_MINUTES)) &&
             !a.justification_status && (
               <>
                 <p>
                   Ausencia injustificada: descuento del doble de las horas programadas. Ausencias y
-                  tardanzas pueden justificarse hasta 72 horas después del final del servicio. Solo
-                  Jefatura resuelve.
+                  tardanzas pueden justificarse hasta {JUSTIFICATION_DEADLINE_HOURS} horas después
+                  del final del servicio. Solo Jefatura resuelve.
                 </p>
-                {Date.now() >= new Date(a.end_at).getTime() &&
-                Date.now() <= new Date(a.end_at).getTime() + 72 * 3600000 ? (
+                {isJustificationWindow(a.end_at) ? (
                   <JustificationForm path={`/attendance/${a.id}/justifications`} />
                 ) : (
                   <p>Fuera del plazo para presentar la justificación.</p>
