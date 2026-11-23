@@ -51,6 +51,11 @@ En Bash utilizar `./mvnw`. **Si la base ya existía antes de Flyway, hacer copia
 | PostgreSQL | 127.0.0.1:5433 |
 | Adminer | http://localhost:8081 |
 
+Adminer es opcional y solo se publica en localhost. Para habilitarlo:
+`docker compose --profile tools up -d`. El arranque normal no inicia Adminer.
+Si ya estaba iniciado, detenerlo con `docker compose --profile tools stop adminer`
+y recrearlo con `docker compose --profile tools up -d adminer` para aplicar el enlace local.
+
 ## Probar con datos demo
 
 Contraseña demo: `convocatorias`.
