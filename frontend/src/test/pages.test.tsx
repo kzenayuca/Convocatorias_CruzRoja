@@ -123,7 +123,7 @@ describe('cuentas y formularios de convocatorias refactorizados', () => {
     await interaction.upload(input as HTMLInputElement, large);
     expect((input as HTMLInputElement).files?.[0]).toBe(large);
     fireEvent.submit(input.closest('form')!);
-    expect(await screen.findByText('Máximo 10 MB.')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Máximo 10 MB.');
     expect(vi.mocked(fetch).mock.calls.some(([path]) => String(path).endsWith('/photo'))).toBe(
       false,
     );

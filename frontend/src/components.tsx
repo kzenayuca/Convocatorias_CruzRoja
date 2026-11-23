@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api, changed, Row } from './api';
+import { useRequest } from './useRequest';
 
 /** Cierra solo después del éxito; los datos/error permanecen disponibles para reabrir. */
 export function saveSucceeded(origin: HTMLElement, message = 'Guardado correctamente.') {
@@ -90,37 +91,27 @@ export function ErrorNotice({ message }: { message?: string }) {
   ) : null;
 }
 export function PdfDownload({ path, filename }: { path: string; filename: string }) {
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { error, busy, run } = useRequest();
+  function download() {
+    void run(async () => {
+      const response = await fetch(`/api/v1${path}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.mensaje || 'No se pudo descargar el PDF.');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  }
   return (
     <span>
-      <button
-        className="button secondary"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError('');
-          try {
-            const response = await fetch(`/api/v1${path}`);
-            if (!response.ok) {
-              const data = await response.json().catch(() => ({}));
-              throw new Error(data.mensaje || 'No se pudo descargar el PDF.');
-            }
-            const url = URL.createObjectURL(await response.blob());
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            document.body.append(link);
-            link.click();
-            link.remove();
-            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-          } catch (e) {
-            setError((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
+      <button className="button secondary" disabled={busy} onClick={download}>
         {busy ? 'Preparando PDF…' : 'Descargar PDF ↓'}
       </button>
       <ErrorNotice message={error} />
@@ -138,28 +129,18 @@ export function Action({
   children: React.ReactNode;
   method?: string;
 }) {
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { error, busy, run } = useRequest();
+  function perform(event: React.MouseEvent<HTMLButtonElement>) {
+    const eventOrigin = event.currentTarget;
+    void run(async () => {
+      await api(path, method, body);
+      saveSucceeded(eventOrigin);
+      changed();
+    });
+  }
   return (
     <span>
-      <button
-        className="button secondary"
-        disabled={busy}
-        onClick={async (event) => {
-          const eventOrigin = event.currentTarget;
-          setBusy(true);
-          setError('');
-          try {
-            await api(path, method, body);
-            saveSucceeded(eventOrigin);
-            changed();
-          } catch (e) {
-            setError((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
+      <button className="button secondary" disabled={busy} onClick={perform}>
         {busy ? 'Guardando…' : children}
       </button>
       <ErrorNotice message={error} />
@@ -189,9 +170,8 @@ export function DataForm({
   label?: string;
   onSaved?: () => void;
 }) {
-  const [error, setError] = useState('');
+  const { error, busy, run } = useRequest();
   const [success, setSuccess] = useState('');
-  const [busy, setBusy] = useState(false);
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -200,20 +180,14 @@ export function DataForm({
       if (f.type === 'number')
         values[f.name] = values[f.name] === '' ? null : Number(values[f.name]);
     });
-    setBusy(true);
-    setError('');
     setSuccess('');
-    try {
+    await run(async () => {
       await submit(values);
       saveSucceeded(form);
       onSaved?.();
       changed();
       setSuccess('Guardado correctamente.');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   return (
     <form className="card flow-form" onSubmit={onSubmit}>

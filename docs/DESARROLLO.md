@@ -77,6 +77,9 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
   Actions ejecuta la suite y el formato en el job frontend con Node 22.
 - Formato de los módulos de páginas intervenidos: `npm run format:pages`.
   El resto de módulos no se reformatea incidentalmente.
+- Peticiones de formularios y acciones: `useRequest` centraliza carga, error y finalización,
+  bloquea envíos simultáneos y controla rechazos incluso después de desmontar el componente.
+  Los efectos de éxito (cerrar formularios, refrescar datos, navegar) permanecen en cada consumidor.
 - Dominio/aplicación: reglas y coordinación sin servidor.
 - Contratos HTTP: `api<T>()` devuelve `unknown` si el consumidor no declara un tipo.
   CSRF y errores se validan en ejecución; un genérico TypeScript no valida JSON externo.
