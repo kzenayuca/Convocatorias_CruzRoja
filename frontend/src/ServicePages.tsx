@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, changed, date, delay, localInput, manager, Row, Session, useData } from './api';
+import { api, changed, CreatedResource, date, delay, localInput, manager, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice, Field, PdfDownload, saveSucceeded, useRequestFocus } from './components';
 import { AnnualEnrollmentPanel } from './AnnualPages';
 
@@ -33,7 +33,7 @@ export function CalloutsPage({ user, history = false }: { user: Session; history
   const filtered = data.filter(c => `${c.service_code ?? ''} ${c.title} ${c.service_type} ${c.location} ${statuses[c.status]}`.toLowerCase().includes(query.toLowerCase()));
   return <><div className="page-heading"><div><p className="eyebrow">{history ? 'Tu recorrido' : 'Encuentra tu próxima actividad'}</p><h1>{history ? 'Historial' : 'Convocatorias'}</h1><p className="lead">{history ? 'Servicios anteriores según tus permisos.' : 'Encuentra un puesto según tu formación y disponibilidad.'}</p></div>{manager(user) && !history && <button className="button" onClick={() => setCreate(!create)}>{create ? 'Cerrar formulario' : 'Nueva convocatoria'}</button>}</div>
     <ErrorNotice message={error}/>{create && <section className="section-block"><h2>Preparar convocatoria</h2><p>Voluntario = graduado o en formación. Total 4 y mínimo 1 graduado significa 4 personas, no 5. Responsable, piloto y radioperador cuentan dentro del total y pueden cubrir el mínimo de graduados. El responsable sigue siendo opcional y lo asigna jefatura.</p>
-      <p>Código generado automáticamente, por ejemplo I-FEB-2027-024: categoría, mes/año de creación y orden de creación en esa categoría/año. El correlativo no vuelve a uno en marzo.</p><DataForm fields={callFields} initial={{ category: 'I', totalVolunteers: 4, graduateSlots: 0, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/>
+      <p>Código generado automáticamente, por ejemplo I-FEB-2027-024: categoría, mes/año de creación y orden de creación en esa categoría/año. El correlativo no vuelve a uno en marzo.</p><DataForm fields={callFields} initial={{ category: 'I', totalVolunteers: 4, graduateSlots: 0, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api<CreatedResource>('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/>
     </section>}
     {!history && user.role === 'VOLUNTARIO' && user.graduated && <AnnualEnrollmentPanel/>}<div className="toolbar"><input aria-label="Buscar convocatorias" placeholder="Código, actividad, tipo o lugar…" value={query} onChange={e => setQuery(e.target.value)}/><button className="button secondary" onClick={() => setQuery('')}>Limpiar</button></div>
     <div className="callout-grid">{filtered.map(c => <article className="card callout-card" key={c.id}><div className="card-topline"><span className="eyebrow">{c.service_code || 'Código pendiente'}</span><span className={`badge ${c.status === 'CANCELADA' ? 'red' : ''}`}>{statuses[c.status] || c.status}</span></div>

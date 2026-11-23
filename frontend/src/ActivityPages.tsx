@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, date, delay, monthNow, Row, Session, useData } from './api';
+import { api, date, delay, monthNow, Notification, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice, PdfDownload, useRequestFocus } from './components';
 import { positionNames } from './ServicePages';
 import { HoursProgress } from './HoursProgress';
@@ -78,7 +78,7 @@ function JustificationCard({ j, user }: { j: Row; user: Session }) {
 }
 
 export function NotificationsPage({ user }: { user: Session }) {
-  const { data, error } = useData<Row[]>('/notifications', []); const [filter, setFilter] = useState('Todas');
+  const { data, error } = useData<Notification[]>('/notifications', []); const [filter, setFilter] = useState('Todas');
   const filters = ['Todas', 'No leídas', 'CUENTA', 'PERFIL', 'GRADUACION', 'REVISION', 'ASISTENCIA', 'INSCRIPCION', 'JUSTIFICACION', 'REEMPLAZO', 'REPORTE', 'CICLO_ANUAL', 'COMUNICADO'];
   return <><p className="eyebrow">Mantente al día</p><h1>Notificaciones</h1><p className="lead">Avisos importantes de tus convocatorias y servicios.</p><ErrorNotice message={error}/><div className="filters">{filters.map(f => <button className={`filter ${filter === f ? 'active' : ''}`} key={f} onClick={() => setFilter(f)}>{f}</button>)}</div>
     <div className="list">{data.filter(n => filter === 'Todas' || (filter === 'No leídas' ? !n.is_read : n.type === filter)).map(n => <article className={`notification ${n.is_read ? '' : 'unread'}`} key={n.id}><span className="notice-icon">🔔</span><div><h3>{n.type}</h3><p>{n.message}</p><Link className="link" to={n.link || '/notifications'} onClick={() => { void api(`/notifications/${n.id}/read`, 'POST').then(() => window.dispatchEvent(new Event('data-changed'))); }}>Ver detalle →</Link></div>{!n.is_read && <Action path={`/notifications/${n.id}/read`}>Marcar leída</Action>}</article>)}</div>

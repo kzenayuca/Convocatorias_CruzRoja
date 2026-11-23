@@ -16,7 +16,7 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   async function login(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
-    try { onLogin(await api('/auth/login', 'POST', { email, password })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { onLogin(await api<Session>('/auth/login', 'POST', { email, password })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return <main className="login-page"><div className="login-card"><div className="brand-mark">+</div><p className="eyebrow">Cruz Roja · Arequipa</p><h1>{register ? 'Solicita tu cuenta' : 'Qué bueno tenerte aquí'}</h1>
     {register ? submitted ? <p role="status">Solicitud registrada. Jefatura revisará y activará tu cuenta.</p> : <><p>Jefatura revisará tu solicitud y habilitaciones antes de activar el acceso.</p><DataForm fields={[...profileFields, { name: 'phone', label: 'Teléfono', type: 'tel', max: 30 }, { name: 'password', label: 'Contraseña (8 a 72 caracteres)', type: 'password', max: 72 }]} label="Solicitar cuenta" submit={async v => {
