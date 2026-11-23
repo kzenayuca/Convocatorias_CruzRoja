@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { api, date, delay, monthNow, Notification, Row, Session, useData } from './api';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { api, changed, date, delay, monthNow, Notification, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice, PdfDownload, useRequestFocus } from './components';
 import { positionNames } from './ServicePages';
 import { HoursProgress } from './HoursProgress';
 import { JustificationForm, ReplacementResolution } from './JustificationForms';
 import { AnnualReport } from './AnnualPages';
+import { useRequest } from './useRequest';
 
 export function ServicesPage() {
   const enrollments = useData<Row[]>('/enrollments', []);
@@ -455,6 +456,21 @@ function JustificationCard({ j, user }: { j: Row; user: Session }) {
 export function NotificationsPage({ user }: { user: Session }) {
   const { data, error } = useData<Notification[]>('/notifications', []);
   const [filter, setFilter] = useState('Todas');
+  const request = useRequest();
+  const navigate = useNavigate();
+  async function readAndNavigate(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    notification: Notification,
+  ) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
+    const saved = await request.run(async () => {
+      await api<void>(`/notifications/${notification.id}/read`, 'POST');
+      changed();
+    });
+    if (saved) navigate(notification.link || '/notifications');
+  }
   const filters = [
     'Todas',
     'No leídas',
@@ -475,7 +491,7 @@ export function NotificationsPage({ user }: { user: Session }) {
       <p className="eyebrow">Mantente al día</p>
       <h1>Notificaciones</h1>
       <p className="lead">Avisos importantes de tus convocatorias y servicios.</p>
-      <ErrorNotice message={error} />
+      <ErrorNotice message={error || request.error} />
       <div className="filters">
         {filters.map((f) => (
           <button
@@ -501,10 +517,9 @@ export function NotificationsPage({ user }: { user: Session }) {
                 <Link
                   className="link"
                   to={n.link || '/notifications'}
-                  onClick={() => {
-                    void api(`/notifications/${n.id}/read`, 'POST').then(() =>
-                      window.dispatchEvent(new Event('data-changed')),
-                    );
+                  aria-disabled={request.busy}
+                  onClick={(event) => {
+                    void readAndNavigate(event, n);
                   }}
                 >
                   Ver detalle →
