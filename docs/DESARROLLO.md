@@ -75,6 +75,13 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
   Las llamadas `fetch` se simulan y restauran por prueba.
   Actions ejecuta la suite en el job frontend con Node 22.
 - Dominio/aplicación: reglas y coordinación sin servidor.
+- Contratos HTTP: `api<T>()` devuelve `unknown` si el consumidor no declara un tipo.
+  CSRF y errores se validan en ejecución; un genérico TypeScript no valida JSON externo.
+  `Session`, `CreatedResource` y `Notification` describen respuestas conocidas.
+  Se conserva deliberadamente `Row = Record<string, any>` como compatibilidad para
+  proyecciones SQL heterogéneas y formularios dinámicos existentes, no como contrato nuevo.
+  Migrar todas esas proyecciones a DTOs requiere contrastar sus campos con cada endpoint;
+  cambiarlo a una conversión global no aumentaría la seguridad real.
 - ArchUnit: dependencias y aislamiento del núcleo.
 - ORM/HTTP: PostgreSQL aislado, mapeos, restricciones, permisos y transacciones.
 - Comunicaciones: privacidad, primera lectura, rollback y entrega única concurrente.
