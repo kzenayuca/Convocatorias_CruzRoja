@@ -22,6 +22,7 @@ import {
   useRequestFocus,
 } from './components';
 import { AnnualEnrollmentPanel } from './AnnualPages';
+import { useRequest } from './useRequest';
 
 export const positionNames: Record<string, string> = {
   TOTAL: 'Total de voluntarios',
@@ -579,9 +580,8 @@ function AssignmentPanel({ id, requirements }: { id: string; requirements: strin
   const [userId, setUserId] = useState('');
   const [query, setQuery] = useState('');
   const [verified, setVerified] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { busy, error, run } = useRequest();
   const candidates = useData<Row[]>(
     `/callouts/${id}/assignment-candidates?position=${position}`,
     [],
@@ -609,10 +609,8 @@ function AssignmentPanel({ id, requirements }: { id: string; requirements: strin
   async function assignParticipant(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    setBusy(true);
-    setError('');
     setSuccess('');
-    try {
+    await run(async () => {
       await api(`/callouts/${id}/assignments`, 'POST', {
         userId,
         position,
@@ -620,14 +618,11 @@ function AssignmentPanel({ id, requirements }: { id: string; requirements: strin
       });
       setUserId('');
       setVerified(false);
-      setSuccess('Inscripción directa confirmada. Se notificó a la persona.');
-      saveSucceeded(form, 'Inscripción directa confirmada. Se notificó a la persona.');
+      const message = 'Inscripción directa confirmada. Se notificó a la persona.';
+      setSuccess(message);
+      saveSucceeded(form, message);
       changed();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   return (
     <details className="section-block">
@@ -971,14 +966,13 @@ function MaterialsPanel({ id }: { id: string }) {
 function PhotoForm({ id, onSaved }: { id: string; onSaved: () => void }) {
   const [file, setFile] = useState<File>();
   const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { busy, error, run } = useRequest();
   async function uploadPhoto(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     if (!file) return;
-    setBusy(true);
     setMessage('');
-    try {
+    await run(async () => {
       if (file.size > 10 * 1024 * 1024) throw new Error('Máximo 10 MB.');
       const data = new FormData();
       data.append('file', file);
@@ -987,11 +981,7 @@ function PhotoForm({ id, onSaved }: { id: string; onSaved: () => void }) {
       onSaved();
       changed();
       setMessage('Foto guardada.');
-    } catch (e) {
-      setMessage((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   return (
     <form className="soft-panel" onSubmit={uploadPhoto}>
@@ -1007,6 +997,7 @@ function PhotoForm({ id, onSaved }: { id: string; onSaved: () => void }) {
       <button className="button secondary" disabled={busy}>
         Guardar foto
       </button>
+      <ErrorNotice message={error} />
       <p role="status">{message}</p>
     </form>
   );

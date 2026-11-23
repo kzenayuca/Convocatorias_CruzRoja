@@ -4,6 +4,7 @@ import { api, date, Session, Row, useData } from './api';
 import { DataForm, ErrorNotice, Field, useRequestFocus } from './components';
 import { HoursProgress } from './HoursProgress';
 import { AnnualEnrollmentPanel, GraduationReview } from './AnnualPages';
+import { useRequest } from './useRequest';
 
 const profileFields: Field[] = [
   { name: 'name', label: 'Nombres', max: 120 },
@@ -17,19 +18,10 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   const [submitted, setSubmitted] = useState(false);
   const [email, setEmail] = useState('voluntario@demo.pe');
   const [password, setPassword] = useState('convocatorias');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { error, busy, run } = useRequest();
   async function login(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
-    setError('');
-    try {
-      onLogin(await api<Session>('/auth/login', 'POST', { email, password }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    await run(async () => onLogin(await api<Session>('/auth/login', 'POST', { email, password })));
   }
   async function requestAccount(values: Row) {
     const { phone, password, ...profile } = values;
