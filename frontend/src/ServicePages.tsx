@@ -3,48 +3,167 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, changed, date, delay, localInput, manager, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice, Field, PdfDownload, saveSucceeded, useRequestFocus } from './components';
 import { AnnualEnrollmentPanel } from './AnnualPages';
-import { categoryNames as categories, calloutStatusNames as statuses, positionNames } from './callouts/calloutLabels';
-import { canAssignDirectly, canEditCallout, canEnroll, isChief, parseRequirements } from './callouts/calloutRules';
+import { categoryLabel, categoryNames, formatHours, positionNames, statusLabel } from './callouts/calloutLabels';
+import {
+  canAssignDirectly, canEditCallout, canEnroll, canReviewEnrollment, enrollmentStatusLabel, isChief, parseRequirements, reviewDecisions,
+} from './callouts/calloutRules';
 import { CalloutHero, EnrollmentSection, ServiceInformation } from './callouts/CalloutDetailSections';
 
 export { positionNames };
 const DEFAULT_CATEGORY = 'I';
+const categoryOptions = Object.entries(categoryNames).map(([value, label]) => ({ value, label }));
+
 const callFields: Field[] = [
-  { name: 'category', label: 'Etiqueta de servicio · código automático al crear', options: Object.entries(categories).map(([value, label]) => ({ value, label })) },
-  { name: 'title', label: 'Título', max: 150 }, { name: 'description', label: 'Descripción', type: 'textarea', max: 5000 },
+  { name: 'category', label: 'Etiqueta de servicio · código automático al crear', options: categoryOptions },
+  { name: 'title', label: 'Título', max: 150 },
+  { name: 'description', label: 'Descripción', type: 'textarea', max: 5000 },
   { name: 'kind', label: 'Convocatoria', options: ['SERVICIO', 'INGRESO'] },
-  { name: 'serviceType', label: 'Descripción del servicio (concierto, limpieza, apoyo, guardia…)', max: 100 }, { name: 'area', label: 'Área', max: 120 },
-  { name: 'start', label: 'Inicio (hora de Perú)', type: 'datetime-local' }, { name: 'end', label: 'Fin (hora de Perú)', type: 'datetime-local' },
+  { name: 'serviceType', label: 'Descripción del servicio (concierto, limpieza, apoyo, guardia…)', max: 100 },
+  { name: 'area', label: 'Área', max: 120 },
+  { name: 'start', label: 'Inicio (hora de Perú)', type: 'datetime-local' },
+  { name: 'end', label: 'Fin (hora de Perú)', type: 'datetime-local' },
   { name: 'deadline', label: 'Completar puestos antes de (hora de Perú)', type: 'datetime-local' },
   { name: 'location', label: 'Lugar' },
-  { name: 'requirements', label: 'Requisitos de esta convocatoria: conocimientos, cursos y experiencia (uno por línea; verificación por jefatura)', type: 'textarea', max: 5000 },
+  {
+    name: 'requirements',
+    label: 'Requisitos de esta convocatoria: conocimientos, cursos y experiencia (uno por línea; verificación por jefatura)',
+    type: 'textarea',
+    max: 5000,
+  },
   { name: 'totalVolunteers', label: 'Total de voluntarios (incluye responsable, piloto y radioperador)', type: 'number', min: 1, max: 10000 },
   { name: 'graduateSlots', label: 'Mínimo de graduados dentro del total (0 = indistinto)', type: 'number', min: 0, max: 10000 },
   { name: 'radioSlots', label: 'Radioperador requerido dentro del total (0 o 1)', type: 'number', min: 0, max: 1 },
   { name: 'pilotSlots', label: 'Piloto requerido dentro del total (0 o 1)', type: 'number', min: 0, max: 1 },
 ];
-export function Positions({ positions }: { positions: Row[] }) {
-  return <div className="positions-grid">{positions.filter(p => p.position !== 'RESPONSABLE' && p.required > 0).map(p => <article className="position-card" key={p.position}>
-    <p className="eyebrow">{p.position === 'GRADUADO' ? 'Graduados dentro del total · mínimo' : positionNames[p.position]}</p><div className="stat">{p.filled}<small> / {p.required}</small></div>
-    <p>{p.filled >= p.required ? 'Requisito cubierto' : `${p.required - p.filled} pendientes`}</p>
-  </article>)}</div>;
+
+function positionTitle(position: string) {
+  return position === 'GRADUADO' ? 'Graduados dentro del total · mínimo' : positionNames[position];
 }
-export function CalloutsPage({ user, history = false }: { user: Session; history?: boolean }) {
+
+function coverageText(filled: number, required: number) {
+  return filled >= required ? 'Requisito cubierto' : `${required - filled} pendientes`;
+}
+
+export function Positions({ positions }: Readonly<{ positions: Row[] }>) {
+  const visible = positions.filter(item => item.position !== 'RESPONSABLE' && item.required > 0);
+  return (
+    <div className="positions-grid">
+      {visible.map(item => (
+        <article className="position-card" key={item.position}>
+          <p className="eyebrow">{positionTitle(item.position)}</p>
+          <div className="stat">{item.filled}<small> / {item.required}</small></div>
+          <p>{coverageText(item.filled, item.required)}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+const NEW_CALLOUT_DEFAULTS: Row = {
+  category: DEFAULT_CATEGORY,
+  totalVolunteers: 4,
+  graduateSlots: 0,
+  radioSlots: 0,
+  pilotSlots: 0,
+  area: 'Voluntariado',
+  serviceType: 'Apoyo Salud',
+};
+
+function matchesCalloutQuery(callout: Row, query: string) {
+  const searchable = `${callout.service_code ?? ''} ${callout.title} ${callout.service_type} ${callout.location} ${statusLabel(callout.status)}`;
+  return searchable.toLowerCase().includes(query.toLowerCase());
+}
+
+export function CalloutsPage({ user, history = false }: Readonly<{ user: Session; history?: boolean }>) {
   const { data, error, loading } = useData<Row[]>(`/callouts?history=${history}`, []);
-  const [query, setQuery] = useState(''); const [create, setCreate] = useState(false); const navigate = useNavigate();
-  const filtered = data.filter(c => `${c.service_code ?? ''} ${c.title} ${c.service_type} ${c.location} ${statuses[c.status]}`.toLowerCase().includes(query.toLowerCase()));
-  return <><div className="page-heading"><div><p className="eyebrow">{history ? 'Tu recorrido' : 'Encuentra tu próxima actividad'}</p><h1>{history ? 'Historial' : 'Convocatorias'}</h1><p className="lead">{history ? 'Servicios anteriores según tus permisos.' : 'Encuentra un puesto según tu formación y disponibilidad.'}</p></div>{manager(user) && !history && <button className="button" onClick={() => setCreate(!create)}>{create ? 'Cerrar formulario' : 'Nueva convocatoria'}</button>}</div>
-    <ErrorNotice message={error}/>{create && <section className="section-block"><h2>Preparar convocatoria</h2><p>Voluntario = graduado o en formación. Total 4 y mínimo 1 graduado significa 4 personas, no 5. Responsable, piloto y radioperador cuentan dentro del total y pueden cubrir el mínimo de graduados. El responsable sigue siendo opcional y lo asigna jefatura.</p>
-      <p>Código generado automáticamente, por ejemplo I-FEB-2027-024: categoría, mes/año de creación y orden de creación en esa categoría/año. El correlativo no vuelve a uno en marzo.</p><DataForm fields={callFields} initial={{ category: 'I', totalVolunteers: 4, graduateSlots: 0, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/>
-    </section>}
-    {!history && user.role === 'VOLUNTARIO' && user.graduated && <AnnualEnrollmentPanel/>}<div className="toolbar"><input aria-label="Buscar convocatorias" placeholder="Código, actividad, tipo o lugar…" value={query} onChange={e => setQuery(e.target.value)}/><button className="button secondary" onClick={() => setQuery('')}>Limpiar</button></div>
-    <div className="callout-grid">{filtered.map(c => <article className="card callout-card" key={c.id}><div className="card-topline"><span className="eyebrow">{c.service_code || 'Código pendiente'}</span><span className={`badge ${c.status === 'CANCELADA' ? 'red' : ''}`}>{statuses[c.status] || c.status}</span></div>
-      <p className="muted">{categories[c.service_category] || 'Categoría histórica'} · {c.service_type}</p><h2><Link to={`/callouts/${c.id}`}>{c.title}</Link></h2><p>📍 {c.location}</p><p>🗓 {date(c.start_at)}</p><p>{Number(c.planned_hours).toLocaleString('es-PE')} horas programadas</p>
-      <p className="muted">Total: {c.positions.find((p: Row) => p.position === 'TOTAL')?.filled}/{c.total_volunteers} voluntarios · Mínimo {c.graduate_slots} graduados dentro del total</p>
-      <Link className="button secondary" to={`/callouts/${c.id}`}>Ver detalle</Link>
-    </article>)}</div>{!loading && !filtered.length && <div className="empty">No hay convocatorias para mostrar.</div>}
-  </>;
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const filtered = data.filter(callout => matchesCalloutQuery(callout, query));
+  const canCreate = manager(user) && !history;
+  const showAnnualEnrollment = !history && user.role === 'VOLUNTARIO' && user.graduated;
+
+  return (
+    <>
+      <div className="page-heading">
+        <CalloutsHeading history={history}/>
+        {canCreate && (
+          <button type="button" className="button" onClick={() => setCreating(!creating)}>
+            {creating ? 'Cerrar formulario' : 'Nueva convocatoria'}
+          </button>
+        )}
+      </div>
+      <ErrorNotice message={error}/>
+      {creating && <NewCalloutForm/>}
+      {showAnnualEnrollment && <AnnualEnrollmentPanel/>}
+      <div className="toolbar">
+        <input aria-label="Buscar convocatorias" placeholder="Código, actividad, tipo o lugar…" value={query} onChange={e => setQuery(e.target.value)}/>
+        <button type="button" className="button secondary" onClick={() => setQuery('')}>Limpiar</button>
+      </div>
+      <div className="callout-grid">
+        {filtered.map(callout => <CalloutCard key={callout.id} callout={callout}/>)}
+      </div>
+      {!loading && filtered.length === 0 && <div className="empty">No hay convocatorias para mostrar.</div>}
+    </>
+  );
 }
+
+function CalloutsHeading({ history }: Readonly<{ history: boolean }>) {
+  return (
+    <div>
+      <p className="eyebrow">{history ? 'Tu recorrido' : 'Encuentra tu próxima actividad'}</p>
+      <h1>{history ? 'Historial' : 'Convocatorias'}</h1>
+      <p className="lead">{history ? 'Servicios anteriores según tus permisos.' : 'Encuentra un puesto según tu formación y disponibilidad.'}</p>
+    </div>
+  );
+}
+
+function NewCalloutForm() {
+  const navigate = useNavigate();
+
+  async function createDraft(values: Row) {
+    const created = await api('/callouts', 'POST', values);
+    await navigate(`/callouts/${created.id}`);
+  }
+
+  return (
+    <section className="section-block">
+      <h2>Preparar convocatoria</h2>
+      <p>
+        Voluntario = graduado o en formación. Total 4 y mínimo 1 graduado significa 4 personas, no 5. Responsable, piloto y
+        radioperador cuentan dentro del total y pueden cubrir el mínimo de graduados. El responsable sigue siendo opcional y lo
+        asigna jefatura.
+      </p>
+      <p>
+        Código generado automáticamente, por ejemplo I-FEB-2027-024: categoría, mes/año de creación y orden de creación en esa
+        categoría/año. El correlativo no vuelve a uno en marzo.
+      </p>
+      <DataForm fields={callFields} initial={NEW_CALLOUT_DEFAULTS} label="Crear borrador" submit={createDraft}/>
+    </section>
+  );
+}
+
+function CalloutCard({ callout }: Readonly<{ callout: Row }>) {
+  const detailPath = `/callouts/${callout.id}`;
+  const total = callout.positions.find((item: Row) => item.position === 'TOTAL');
+  return (
+    <article className="card callout-card">
+      <div className="card-topline">
+        <span className="eyebrow">{callout.service_code || 'Código pendiente'}</span>
+        <span className={`badge ${callout.status === 'CANCELADA' ? 'red' : ''}`}>{statusLabel(callout.status)}</span>
+      </div>
+      <p className="muted">{categoryLabel(callout.service_category)} · {callout.service_type}</p>
+      <h2><Link to={detailPath}>{callout.title}</Link></h2>
+      <p>📍 {callout.location}</p>
+      <p>🗓 {date(callout.start_at)}</p>
+      <p>{formatHours(callout.planned_hours)} horas programadas</p>
+      <p className="muted">
+        Total: {total?.filled}/{callout.total_volunteers} voluntarios · Mínimo {callout.graduate_slots} graduados dentro del total
+      </p>
+      <Link className="button secondary" to={detailPath}>Ver detalle</Link>
+    </article>
+  );
+}
+
 export function DetailPage({ user }: Readonly<{ user: Session }>) {
   const { id } = useParams();
   const calloutId = id!;
@@ -365,20 +484,60 @@ function AssignmentPanel({ id, requirements }: Readonly<{ id: string; requiremen
     </details>
   );
 }
-function TeamPage({ id, user, callout: c }: { id: string; user: Session; callout: Row }) {
+
+function TeamPage({ id, user, callout }: Readonly<{ id: string; user: Session; callout: Row }>) {
   const applicants = useData<Row[]>(`/callouts/${id}/enrollments`, []);
   useRequestFocus(applicants.data);
-  return <><details className="section-block"><summary>Equipo e inscripciones</summary><ErrorNotice message={applicants.error}/>
-    {Object.keys(positionNames).map(position => {
-      const rows = applicants.data.filter(e => e.position === position); if (!rows.length) return null;
-      return <section className="team-group" key={position}><h3>{positionNames[position]}</h3>{rows.map(e => <details className="card" data-focus={`enrollment:${e.id}`} key={e.id}>
-        <summary>{e.name} {e.surnames} · {e.status === 'CONFIRMADA' ? 'ACEPTADA' : e.status}</summary><p>Inscripción: {date(e.created_at)}</p>{e.assigned_by && <p>Asignación de jefatura: {date(e.assigned_at)} · Requisitos verificados.</p>}{e.replaced_name && <p>Reemplaza a: {e.replaced_name}</p>}{e.cancellation_requested_at && <p>Solicitó reemplazo. Jefatura gestiona la solicitud en Justificaciones.</p>}
-        {new Date(c.start_at).getTime() > Date.now() && user.role === 'JEFATURA' && ['CONFIRMADA', 'PENDIENTE_REEMPLAZO'].includes(e.status) && <DataForm fields={[{ name: 'decision', label: 'Decisión', options: e.status === 'CONFIRMADA' ? ['RECHAZAR'] : ['APROBAR', 'RECHAZAR'] }, { name: 'comment', label: 'Motivo' }]} submit={v => api(`/enrollments/${e.id}/review`, 'POST', { approved: v.decision === 'APROBAR', comment: v.comment })}/>}
-      </details>)}</section>;
-    })}
-    {!applicants.data.length && <p>Aún no hay participantes.</p>}
-    </details>{c.can_operate && <><OperationPanel id={id} user={user} kind={c.kind}/><MaterialsPanel id={id}/></>}</>;
+  const groups = Object.keys(positionNames)
+    .map(position => ({ position, enrollments: applicants.data.filter(enrollment => enrollment.position === position) }))
+    .filter(group => group.enrollments.length > 0);
+
+  return (
+    <>
+      <details className="section-block">
+        <summary>Equipo e inscripciones</summary>
+        <ErrorNotice message={applicants.error}/>
+        {groups.map(group => (
+          <section className="team-group" key={group.position}>
+            <h3>{positionNames[group.position]}</h3>
+            {group.enrollments.map(enrollment => (
+              <EnrollmentCard key={enrollment.id} enrollment={enrollment} reviewable={canReviewEnrollment(user, callout, enrollment)}/>
+            ))}
+          </section>
+        ))}
+        {applicants.data.length === 0 && <p>Aún no hay participantes.</p>}
+      </details>
+      {callout.can_operate && (
+        <>
+          <OperationPanel id={id} user={user} kind={callout.kind}/>
+          <MaterialsPanel id={id}/>
+        </>
+      )}
+    </>
+  );
 }
+
+function reviewEnrollment(enrollmentId: string, values: Row) {
+  return api(`/enrollments/${enrollmentId}/review`, 'POST', { approved: values.decision === 'APROBAR', comment: values.comment });
+}
+
+function EnrollmentCard({ enrollment, reviewable }: Readonly<{ enrollment: Row; reviewable: boolean }>) {
+  const reviewFields: Field[] = [
+    { name: 'decision', label: 'Decisión', options: reviewDecisions(enrollment.status) },
+    { name: 'comment', label: 'Motivo' },
+  ];
+  return (
+    <details className="card" data-focus={`enrollment:${enrollment.id}`}>
+      <summary>{enrollment.name} {enrollment.surnames} · {enrollmentStatusLabel(enrollment.status)}</summary>
+      <p>Inscripción: {date(enrollment.created_at)}</p>
+      {enrollment.assigned_by && <p>Asignación de jefatura: {date(enrollment.assigned_at)} · Requisitos verificados.</p>}
+      {enrollment.replaced_name && <p>Reemplaza a: {enrollment.replaced_name}</p>}
+      {enrollment.cancellation_requested_at && <p>Solicitó reemplazo. Jefatura gestiona la solicitud en Justificaciones.</p>}
+      {reviewable && <DataForm fields={reviewFields} submit={values => reviewEnrollment(enrollment.id, values)}/>}
+    </details>
+  );
+}
+
 function OperationPanel({ id, user, kind }: { id: string; user: Session; kind: string }) {
   const attendance = useData<Row[]>(`/callouts/${id}/attendance`, []);
   useRequestFocus(attendance.data);
