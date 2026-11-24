@@ -41,8 +41,17 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+      - name: Cache de la distribución Maven Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Arquitectura, dominio, casos de uso y regresión con PostgreSQL aislado
         run: bash ./mvnw -B -ntp -Pquality verify
+      - name: Resumir pruebas y cobertura reales
+        if: always()
+        working-directory: .
+        run: python3 tools/ci_backend_report.py
       - name: Conservar ejecución y cobertura
         if: always()
         uses: actions/upload-artifact@v4
@@ -51,6 +60,23 @@ jobs:
           path: |
             backend/target/surefire-reports/
             backend/target/site/jacoco/
+            backend/target/ci-summary.md
+      - name: Resolver dependencias Java para Scanner CLI
+        # Scanner CLI necesita las dependencias Java además del bytecode.
+        # Se resuelven con el mismo POM que se acaba de construir.
+        run: bash ./mvnw -B -ntp dependency:copy-dependencies -DincludeScope=test -DoutputDirectory=target/sonar-libraries
+      - name: Compartir entradas del análisis backend
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-sonar-input
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            backend/target/classes/
+            backend/target/test-classes/
+            backend/target/surefire-reports/
+            backend/target/site/jacoco/
+            backend/target/sonar-libraries/
       - name: Validar Docker Compose sin iniciar servicios
         working-directory: .
         run: docker compose config --quiet
@@ -60,6 +86,71 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_*.py'
           python3 tools/build_model.py
           python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
+
+  # Servidor aislado por ejecución: no requiere runner propio ni secretos del equipo.
+  # Community analiza un snapshot, sin decorar PR ni conservar historial del servidor.
+  sonar:
+    name: Backend · SonarQube temporal y Quality Gate
+    needs: backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SONAR_HOST_URL: http://127.0.0.1:9000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-sonar-input
+          path: backend/target
+      - name: Iniciar SonarQube Community 25.1 aislado
+        run: |
+          sudo sysctl -w vm.max_map_count=524288
+          sudo sysctl -w fs.file-max=131072
+          docker run -d --name ci-sonarqube \
+            --publish 127.0.0.1:9000:9000 \
+            --ulimit nofile=131072:131072 --ulimit nproc=8192 \
+            --env SONAR_TELEMETRY_ENABLE=false \
+            sonarqube:25.1.0.102122-community@sha256:47e573f85879254dafd7be9845f750155f33de8a6f33542015c31ce050917059
+      - name: Esperar servidor y generar credencial temporal
+        id: prepare
+        run: python3 tools/ci_sonar.py prepare
+      - name: Scanner CLI 7.2 · código, JaCoCo y espera del Quality Gate
+        id: scan
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          scannerVersion: 7.2.0.5079
+          args: >-
+            -Dsonar.scm.revision=${{ github.sha }}
+            -Dsonar.java.jdkHome=${{ env.JAVA_HOME }}
+      - name: Exportar issues y verificar el resultado real del análisis
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        env:
+          SCANNER_OUTCOME: ${{ steps.scan.outcome }}
+        run: python3 tools/ci_sonar.py collect
+      - name: Guardar diagnóstico y eliminar servidor temporal
+        if: always()
+        run: |
+          mkdir -p backend/target/sonar-evidence
+          docker logs ci-sonarqube > backend/target/sonar-evidence/server.log 2>&1 || true
+          docker rm --force --volumes ci-sonarqube || true
+      - name: Conservar evidencias incluso si falla el Gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-sonarqube
+          retention-days: 30
+          path: |
+            backend/target/sonar/report-task.txt
+            backend/target/sonar-evidence/
 
   frontend:
     runs-on: ubuntu-24.04
@@ -107,6 +198,11 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Cache de la distribución Maven Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Iniciar API y frontend de pruebas
         env:
           SPRING_PROFILES_ACTIVE: local-demo
