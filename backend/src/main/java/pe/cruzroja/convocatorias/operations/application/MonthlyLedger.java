@@ -8,9 +8,9 @@ import java.util.Map;
 
 /** Se consulta después de bloquear la convocatoria. Aprobar bloquea primero todas las del mes. */
 public class MonthlyLedger {
-    private final AttendanceRepository repository;
+    private final MonthlyReportClosureRepository repository;
 
-    public MonthlyLedger(AttendanceRepository repository) {
+    public MonthlyLedger(MonthlyReportClosureRepository repository) {
         this.repository = repository;
     }
 

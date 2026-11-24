@@ -36,7 +36,8 @@ Después de la adopción correcta, retirar esa variable del entorno.
 Flyway aplica baseline 0 y `V1__legacy_schema.sql` sobre el esquema anterior. Una base vacía no
 necesita baseline. Hibernate usa `ddl-auto=validate`, no modifica el esquema.
 No editar una migración aplicada: añadir V2, V3, etc. No usar `create`, `create-drop` ni borrar volúmenes.
-`data.sql` conserva la inicialización demo idempotente; una migración no debe restaurar datos sobre los del usuario.
+El perfil explícito `local-demo` carga `db/demo/data.sql` en una base de desarrollo desechable.
+El arranque estándar aplica las migraciones de Flyway. Las cuentas demo ya existentes permanecen en la base.
 
 ## Compilar y comprobar
 
@@ -114,6 +115,9 @@ Spotless no sustituye SonarLint; un análisis sin hallazgos no garantiza ausenci
 `.github/workflows/ci.yml` construye backend/frontend, ejecuta integración PostgreSQL efímera,
 comprueba formato y ejecuta Selenium con cobertura backend. Se conservan reportes y diagnóstico.
 Los resultados remotos solo se conocen después de ejecutar Actions; tener YAML no prueba que pasó.
+
+Para entender SonarQube temporal en GitHub, el análisis local Windows/Linux, el
+Quality Gate y las evidencias: [guía del pipeline backend](PIPELINE.md).
 
 ## Mantenimiento y seguridad
 

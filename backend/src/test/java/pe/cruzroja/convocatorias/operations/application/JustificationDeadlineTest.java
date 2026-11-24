@@ -22,7 +22,8 @@ class JustificationDeadlineTest {
                 var context = mock(ExecutionContext.class);
                 when(context.actor()).thenReturn(new Actor(user, "VOLUNTARIO", false));
                 when(context.now()).thenReturn(end.plusHours(72).plusSeconds(expired ? 1 : 0));
-                var repo = mock(AttendanceRepository.class);
+                var records = mock(AttendanceRecordRepository.class);
+                var justifications = mock(JustificationRepository.class);
                 var workflow = mock(CalloutWorkflow.class);
                 var notifications = mock(NotificationPublisher.class);
                 var a =
@@ -39,11 +40,11 @@ class JustificationDeadlineTest {
                                         "policy_version",
                                         2));
                 if (tardy) a.put("check_in", start.plusMinutes(20));
-                when(repo.find(attendance, false)).thenReturn(a);
-                when(repo.find(attendance, true)).thenReturn(a);
+                when(records.find(attendance, false)).thenReturn(a);
+                when(records.find(attendance, true)).thenReturn(a);
                 when(workflow.locked(callout))
                         .thenReturn(Map.of("start_at", start, "end_at", end, "title", "Guardia"));
-                when(repo.justification(any(UUID.class), eq(false)))
+                when(justifications.justification(any(UUID.class), eq(false)))
                         .thenReturn(
                                 Map.of(
                                         "name",
@@ -54,7 +55,11 @@ class JustificationDeadlineTest {
                                         tardy ? "TARDANZA" : "AUSENCIA"));
                 var useCase =
                         new AttendanceUseCases(
-                                repo,
+                                records,
+                                mock(AttendanceReviewRepository.class),
+                                justifications,
+                                mock(MonthlyReportRepository.class),
+                                mock(AttendanceDirectoryRepository.class),
                                 mock(EnrollmentRepository.class),
                                 mock(CalloutRepository.class),
                                 workflow,
@@ -69,11 +74,11 @@ class JustificationDeadlineTest {
                     assertThrows(
                             IllegalArgumentException.class,
                             () -> useCase.justify(attendance, reason));
-                    verify(repo, never())
+                    verify(justifications, never())
                             .justify(any(), any(), any(), any(), any(), anyBoolean(), any());
                 } else {
                     useCase.justify(attendance, reason);
-                    verify(repo)
+                    verify(justifications)
                             .justify(
                                     any(),
                                     eq(attendance),

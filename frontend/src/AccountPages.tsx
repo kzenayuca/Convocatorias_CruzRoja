@@ -294,6 +294,8 @@ export function AdministrationPage() {
 }
 
 function HourTargetsSection({ targets }: Readonly<{ targets: Row }>) {
+  /** Espera a que lleguen las metas para no mostrar un formulario vacío. */
+  const hasHourTargets = 'training_hours' in targets && 'graduate_hours' in targets;
   return (
     <section className="section-block">
       <h2>Metas de horas por condición</h2>
@@ -306,16 +308,18 @@ function HourTargetsSection({ targets }: Readonly<{ targets: Row }>) {
         <InfoItem term="En formación · acumulado histórico">{hoursText(targets.training_hours)}</InfoItem>
         <InfoItem term="Graduados · meta anual">{hoursText(targets.graduate_hours)}</InfoItem>
       </dl>
-      <details>
-        <summary>Editar metas de horas</summary>
-        <DataForm
-          key={`${targets.training_hours}-${targets.graduate_hours}`}
-          fields={hourTargetFields}
-          initial={{ trainingHours: targets.training_hours, graduateHours: targets.graduate_hours }}
-          label="Guardar metas generales"
-          submit={values => api('/administration', 'PUT', values)}
-        />
-      </details>
+      {hasHourTargets && (
+        <details>
+          <summary>Editar metas de horas</summary>
+          <DataForm
+            key={`${targets.training_hours}-${targets.graduate_hours}`}
+            fields={hourTargetFields}
+            initial={{ trainingHours: targets.training_hours, graduateHours: targets.graduate_hours }}
+            label="Guardar metas generales"
+            submit={values => api('/administration', 'PUT', values)}
+          />
+        </details>
+      )}
     </section>
   );
 }

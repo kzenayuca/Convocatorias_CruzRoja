@@ -147,8 +147,15 @@ describe('AdministrationPage', () => {
     expect(screen.getByText('I-NOV-2026-002')).toBeInTheDocument();
   });
 
-  it('indica cuando las metas no están configuradas y guarda nuevas metas', async () => {
+   it('no muestra el formulario de metas hasta recibirlas del servidor', () => {
     responses['/administration'] = {};
+    renderAt(<AdministrationPage/>);
+    expect(screen.queryByText('Editar metas de horas')).not.toBeInTheDocument();
+  });
+
+  it('indica cuando las metas no están configuradas y guarda nuevas metas', async () => {
+    responses['/administration'] = { training_hours: null, graduate_hours: null };
+    
     renderAt(<AdministrationPage/>);
     expect(screen.getAllByText('Sin configurar')).toHaveLength(2);
     await userEvent.type(screen.getByLabelText('Meta de formación (saldo neto acumulado entre años)'), '150');
