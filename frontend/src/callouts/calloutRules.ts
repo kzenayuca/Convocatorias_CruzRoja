@@ -45,3 +45,17 @@ export function canAssignDirectly(user: Session, callout: Row, editable: boolean
 export function enrollmentStatusLabel(status: string): string {
   return status === 'CONFIRMADA' ? 'ACEPTADA' : status;
 }
+
+/** Estados de una inscripción que jefatura todavía puede revisar. */
+const REVIEWABLE_ENROLLMENT_STATUSES: ReadonlySet<string> = new Set(['CONFIRMADA', 'PENDIENTE_REEMPLAZO']);
+
+export function canReviewEnrollment(user: Session, callout: Row, enrollment: Row, now = Date.now()): boolean {
+  return isChief(user)
+    && isFuture(callout.start_at, now)
+    && REVIEWABLE_ENROLLMENT_STATUSES.has(enrollment.status);
+}
+
+/** Una inscripción confirmada solo puede rechazarse; un reemplazo pendiente se aprueba o se rechaza. */
+export function reviewDecisions(status: string): string[] {
+  return status === 'CONFIRMADA' ? ['RECHAZAR'] : ['APROBAR', 'RECHAZAR'];
+}
