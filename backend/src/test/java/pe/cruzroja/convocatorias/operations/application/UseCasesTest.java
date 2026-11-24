@@ -99,6 +99,22 @@ class UseCasesTest {
     }
 
     @Test
+    void responsibleManagementKeepsChiefAuthorizationIndependentFromServices() {
+        var repository = mock(CalloutRepository.class);
+        var useCase =
+                new ResponsibleManagement(
+                        repository,
+                        mock(EnrollmentRepository.class),
+                        mock(CalloutWorkflow.class),
+                        mock(MonthlyLedger.class),
+                        context,
+                        notices);
+
+        assertThrows(AccessDenied.class, () -> useCase.candidates(callout));
+        verifyNoInteractions(repository);
+    }
+
+    @Test
     void accountReviewCoordinatesServiceLocksBeforeSaving() {
         when(context.actor()).thenReturn(new Actor(chief, "JEFATURA", false));
         var repo = mock(VolunteerRepository.class);
