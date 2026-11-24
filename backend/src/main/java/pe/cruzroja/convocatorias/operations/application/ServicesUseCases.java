@@ -16,6 +16,9 @@ public class ServicesUseCases extends UseCaseSupport {
     private final MonthlyLedger ledger;
     private final ImageInspector images;
     private final EnrollmentUseCases registration;
+    private final ResponsibleManagement responsibleManagement;
+    private final CalloutPresentation presentation;
+    private final CalloutDocuments documents;
 
     public ServicesUseCases(
             CalloutRepository repository,
@@ -35,6 +38,19 @@ public class ServicesUseCases extends UseCaseSupport {
         this.images = images;
         this.registration =
                 new EnrollmentUseCases(repository, enrollments, workflow, context, notifications);
+        this.responsibleManagement =
+                new ResponsibleManagement(
+                        repository, enrollments, workflow, ledger, context, notifications);
+        this.presentation = new CalloutPresentation(repository, enrollments, workflow, context);
+        this.documents =
+                new CalloutDocuments(
+                        repository,
+                        maintenance,
+                        presentation,
+                        workflow,
+                        enrollments,
+                        context,
+                        notifications);
     }
 
     public record Callout(
@@ -163,52 +179,6 @@ public class ServicesUseCases extends UseCaseSupport {
         }
     }
 
-    private Map<String, Object> presentation(Map<String, Object> c) {
-        c.put("total_volunteers", workflow.total(c));
-        c.put("positions", workflow.positions(c));
-        c.put("can_edit", workflow.canEdit(c));
-        c.put("can_operate", workflow.canOperate(c));
-        c.put("can_view_team", workflow.canEdit(c));
-        c.put("can_upload_photo", workflow.canOperate(c));
-        c.put(
-                "eligible_positions",
-                CalloutWorkflow.POSITIONS.stream()
-                        .filter(
-                                p ->
-                                        !Set.of("RESPONSABLE", "FORMACION").contains(p)
-                                                && (!p.equals("GRADUADO")
-                                                        || workflow.capacity(c, "GRADUADO") > 0)
-                                                && workflow.qualified(c, actor().id(), p))
-                        .toList());
-        var own = enrollments.byUser(id(c, "id"), actor().id(), false);
-        c.put(
-                "my_enrollment",
-                own.isEmpty()
-                        ? null
-                        : Map.of(
-                                "id",
-                                own.get(0).get("id"),
-                                "status",
-                                own.get(0).get("status"),
-                                "position",
-                                own.get(0).get("position")));
-        c.put("contact", "Consultar a jefatura");
-        if ((chief() || !own.isEmpty() && "CONFIRMADA".equals(own.get(0).get("status")))
-                && c.get("responsible_id") != null) {
-            String phone = repository.responsiblePhone(id(c, "id"), id(c, "responsible_id"));
-            if (phone != null && !phone.isBlank()) c.put("contact", phone);
-        }
-        c.put("coverage", workflow.complete(c) ? "COMPLETA" : "PENDIENTE");
-        c.put(
-                "execution",
-                text(c, "status").equals("CANCELADA")
-                        ? "CANCELADO"
-                        : c.get("closed_at") != null || text(c, "status").equals("FINALIZADA")
-                                ? "FINALIZADO"
-                                : c.get("opened_at") != null ? "EN CURSO" : "PROGRAMADO");
-        return c;
-    }
-
     public List<Map<String, Object>> callouts(boolean history) {
         maintenance.refresh();
         return repository.views().stream()
@@ -220,7 +190,7 @@ public class ServicesUseCases extends UseCaseSupport {
                             return Set.of("ABIERTA", "CERRADA").contains(c.get("status"))
                                     && workflow.compatible(c, actor().id());
                         })
-                .map(this::presentation)
+                .map(presentation::present)
                 .toList();
     }
 
@@ -236,7 +206,7 @@ public class ServicesUseCases extends UseCaseSupport {
                                 : Set.of("ABIERTA", "CERRADA").contains(c.get("status"))
                                         && workflow.compatible(c, actor().id())),
                 "No tienes acceso a esta convocatoria.");
-        return presentation(c);
+        return presentation.present(c);
     }
 
     private String code(String value) {
@@ -474,114 +444,27 @@ public class ServicesUseCases extends UseCaseSupport {
     }
 
     public List<Map<String, Object>> responsibleCandidates(UUID id) {
-        require(chief(), "Solo jefatura asigna responsables.");
-        var c = repository.snapshot(id, false);
-        return repository.responsibleCandidates(id).stream()
-                .filter(u -> !workflow.overlap(c, id(u, "id")))
-                .toList();
+        return responsibleManagement.candidates(id);
     }
 
     public void responsible(UUID id, Responsible r) {
-        require(chief(), "Solo jefatura asigna responsables.");
-        var c = workflow.locked(id);
-        workflow.model(c).requireInitialResponsible(r.userId());
-        setResponsible(c, r.userId(), "Asignación inicial por jefatura");
+        responsibleManagement.assign(id, r);
     }
 
     public void changeResponsible(UUID id, ResponsibleChange r) {
-        require(chief(), "Solo jefatura cambia o retira responsables.");
-        var c = workflow.locked(id);
-        workflow.model(c)
-                .requireResponsibleChange(r.expectedResponsibleId(), r.userId(), r.reason());
-        setResponsible(c, r.userId(), r.reason());
+        responsibleManagement.change(id, r);
     }
 
     public List<Map<String, Object>> responsibleHistory(UUID id) {
-        require(chief(), "Solo jefatura consulta el historial de responsables.");
-        return repository.responsibleHistory(id);
-    }
-
-    private void setResponsible(Map<String, Object> c, UUID user, String reason) {
-        UUID id = id(c, "id");
-        ledger.ensureOpen(c);
-        valid(
-                user == null || text(c, "kind").equals("SERVICIO"),
-                "El ingreso no requiere un responsable de servicio.");
-        valid(
-                time(c, "start_at").isAfter(now())
-                        && c.get("opened_at") == null
-                        && !Set.of("CANCELADA", "FINALIZADA").contains(c.get("status")),
-                "Asigna al responsable antes del servicio.");
-        if (user != null) {
-            enrollments.lockVolunteer(user);
-            valid(
-                    workflow.qualified(c, user, "RESPONSABLE"),
-                    "El responsable debe ser un voluntario graduado activo.");
-            var own = enrollments.byUser(id, user, false);
-            valid(
-                    own.size() == 1
-                            && "CONFIRMADA".equals(own.get(0).get("status"))
-                            && Set.of("SOCORRISTA", "GRADUADO", "FORMACION")
-                                    .contains(own.get(0).get("position")),
-                    "Primero inscribe a la persona como voluntario general en esta convocatoria.");
-            valid(!workflow.overlap(c, user), "El responsable tiene otro servicio en ese horario.");
-            valid(
-                    workflow.canAdmit(c, user, "RESPONSABLE", user),
-                    "El responsable debe caber dentro del total sin ocupar el espacio reservado para piloto o radioperador.");
-            valid(
-                    !enrollments.replacementRequested(id, user),
-                    "Resuelve primero la solicitud de reemplazo de esta persona.");
-        }
-        repository.changeResponsible(
-                id, id(c, "responsible_id"), user, actor().id(), now(), reason);
-        workflow.synchronize(workflow.locked(id));
-        workflow.announce(workflow.locked(id), "Responsable actualizado por jefatura.");
+        return responsibleManagement.history(id);
     }
 
     public List<Map<String, Object>> schedule(LocalDate date) {
-        maintenance.refresh();
-        return repository.schedule(date, chief() ? null : actor().id()).stream()
-                .map(this::presentation)
-                .toList();
+        return documents.schedule(date);
     }
 
     public Document schedulePdf(LocalDate date) {
-        require(chief(), "Solo jefatura puede descargar la programación en PDF.");
-        var lines = new ArrayList<String>();
-        for (var c : schedule(date)) {
-            lines.add(
-                    Objects.toString(c.get("service_code"), "Sin código") + " - " + c.get("title"));
-            lines.add(
-                    c.get("service_type")
-                            + " | "
-                            + time(c, "start_at")
-                            + " a "
-                            + time(c, "end_at"));
-            lines.add(
-                    "Lugar: "
-                            + c.get("location")
-                            + " | Responsable: "
-                            + Objects.toString(c.get("responsible_name"), "Sin asignar"));
-            lines.add("Cobertura: " + c.get("coverage") + " | Ejecución: " + c.get("execution"));
-            lines.add(
-                    "Total de voluntarios: "
-                            + workflow.total(c)
-                            + " | Mínimo de graduados dentro del total: "
-                            + c.get("graduate_slots"));
-            for (var e : applicants(id(c, "id")))
-                lines.add(
-                        e.get("position")
-                                + ": "
-                                + e.get("name")
-                                + " "
-                                + e.get("surnames")
-                                + " - "
-                                + e.get("status"));
-            lines.add("");
-        }
-        if (lines.isEmpty()) lines.add("No hay servicios para esta fecha.");
-        return new Document(
-                "programacion-" + date + ".pdf", "Programación general - " + date, lines);
+        return documents.schedulePdf(date);
     }
 
     public List<Map<String, Object>> myPhotos() {

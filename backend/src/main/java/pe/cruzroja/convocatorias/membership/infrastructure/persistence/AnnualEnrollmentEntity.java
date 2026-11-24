@@ -7,11 +7,10 @@ import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.Immutable;
+import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentSummary;
 
 /** Read mapping; atomic native inserts preserve the existing person/year uniqueness contract. */
 @Entity
@@ -29,13 +28,8 @@ public class AnnualEnrollmentEntity {
 
     protected AnnualEnrollmentEntity() {}
 
-    public Map<String, Object> projection() {
-        var row = new LinkedHashMap<String, Object>();
-        row.put("year", year);
-        row.put("registered_at", registeredAt);
-        row.put("registered_by", registeredBy);
-        row.put("source", source);
-        return row;
+    public AnnualEnrollmentSummary projection() {
+        return new AnnualEnrollmentSummary(year, registeredAt, registeredBy, source);
     }
 
     public static class Key implements Serializable {

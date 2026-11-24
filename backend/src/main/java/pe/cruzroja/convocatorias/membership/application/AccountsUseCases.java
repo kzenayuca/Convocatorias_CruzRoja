@@ -80,152 +80,162 @@ public class AccountsUseCases extends UseCaseSupport {
         }
     }
 
-    public Map<String, String> register(Registration r) {
-        UUID user = UUID.randomUUID();
-        repository.register(user, r, passwords.encode(r.password()));
+    public RegistrationReceipt register(Registration registration) {
+        UUID volunteerId = UUID.randomUUID();
+        repository.register(volunteerId, registration, passwords.encode(registration.password()));
         for (var chief : repository.chiefs())
             notifyUser(
                     chief,
                     "CUENTA",
-                    r.profile().name()
+                    registration.profile().name()
                             + " "
-                            + r.profile().surnames()
+                            + registration.profile().surnames()
                             + " solicita activación de cuenta. Revisa y acepta o rechaza la solicitud.",
-                    "/users?user=" + user);
+                    "/users?user=" + volunteerId);
         notifyUser(
-                user,
+                volunteerId,
                 "CUENTA",
                 "Tu solicitud de cuenta está pendiente de Jefatura.",
                 "/profile?section=condition");
-        return Map.of(
-                "mensaje",
+        return new RegistrationReceipt(
                 "Solicitud registrada. Jefatura debe activar tu cuenta antes de iniciar sesión.");
     }
 
-    public Map<String, Object> profile() {
+    public VolunteerProfile profile() {
         return repository.profile(actor().id());
     }
 
-    public void phone(Phone r) {
-        repository.phone(actor().id(), r.phone());
+    public void phone(Phone phoneUpdate) {
+        repository.phone(actor().id(), phoneUpdate.phone());
     }
 
-    public void change(Profile p) {
+    public void change(Profile proposedProfile) {
         repository.lock(actor().id());
         valid(
                 !repository.hasPendingChange(actor().id()),
                 "Ya tienes un cambio de perfil pendiente. Espera su resolución antes de enviar otro.");
-        repository.requestChange(actor().id(), p);
-        var request = repository.lockChange(actor().id());
-        UUID id = (UUID) request.get("request_id");
-        var current = repository.profile(actor().id());
+        repository.requestChange(actor().id(), proposedProfile);
+        var pendingChange = repository.lockChange(actor().id());
+        UUID requestId = pendingChange.requestId();
+        var currentProfile = repository.profile(actor().id());
         for (var chief : repository.chiefs())
             notifyUser(
                     chief,
                     "PERFIL",
-                    current.get("name")
+                    currentProfile.name()
                             + " "
-                            + current.get("surnames")
+                            + currentProfile.surnames()
                             + " solicita un cambio de perfil. Revisa los datos propuestos.",
-                    "/users?change=" + id);
+                    "/users?change=" + requestId);
         notifyUser(
                 actor().id(),
                 "PERFIL",
                 "Cambio de perfil enviado. Está pendiente de Jefatura.",
-                "/profile?request=" + id);
+                "/profile?request=" + requestId);
     }
 
-    public List<Map<String, Object>> profileRequests() {
+    public List<ProfileChangeRequest> profileRequests() {
         return repository.profileRequests(actor().id());
     }
 
-    public Map<String, Object> profileRequest(UUID id) {
-        var r = repository.profileRequest(id);
+    public ProfileChangeRequest profileRequest(UUID requestId) {
+        var request = repository.profileRequest(requestId);
         require(
-                chief() || actor().id().equals(r.get("user_id")),
+                chief() || actor().id().equals(request.userId()),
                 "No puedes consultar solicitudes de perfil ajenas.");
-        return r;
+        return request;
     }
 
-    public List<Map<String, Object>> users() {
+    public List<VolunteerProfile> users() {
         require(chief(), "Solo jefatura puede consultar los datos personales de las cuentas.");
         return repository.users();
     }
 
-    public List<Map<String, Object>> changes() {
+    public List<PendingProfileChange> changes() {
         require(chief(), "Solo jefatura revisa cambios de perfil.");
         return repository.changes();
     }
 
-    public GraduationEligibility.Assessment graduationProgress(UUID id) {
+    public GraduationEligibility.Assessment graduationProgress(UUID volunteerId) {
         require(chief(), "Solo Jefatura evalúa la graduación de otros voluntarios.");
-        repository.profile(id);
-        return graduation.assess(id);
+        repository.profile(volunteerId);
+        return graduation.assess(volunteerId);
     }
 
-    public void resolveProfile(UUID id, Decision r) {
+    public void resolveProfile(UUID volunteerId, Decision decision) {
         require(chief(), "Solo jefatura revisa cambios de perfil.");
-        var change = repository.lockChange(id);
-        UUID request = (UUID) change.get("request_id");
+        var pendingChange = repository.lockChange(volunteerId);
+        UUID requestId = pendingChange.requestId();
         valid(
-                r.requestId() == null || r.requestId().equals(request),
+                decision.requestId() == null || decision.requestId().equals(requestId),
                 "La solicitud cambió o ya fue resuelta. Actualiza la pantalla.");
-        if (r.approved()) repository.approveChange(id, change);
-        repository.resolveChange(request, r.approved(), r.comment(), actor().id(), now());
-        repository.deleteChange(id);
+        if (decision.approved()) repository.approveChange(volunteerId, pendingChange);
+        repository.resolveChange(
+                requestId, decision.approved(), decision.comment(), actor().id(), now());
+        repository.deleteChange(volunteerId);
         notifyUser(
-                id,
+                volunteerId,
                 "PERFIL",
-                "Cambio de perfil " + (r.approved() ? "aprobado: " : "rechazado: ") + r.comment(),
-                "/profile?request=" + request);
+                "Cambio de perfil "
+                        + (decision.approved() ? "aprobado: " : "rechazado: ")
+                        + decision.comment(),
+                "/profile?request=" + requestId);
     }
 
-    public void review(UUID id, Review r) {
+    public void review(UUID volunteerId, Review review) {
         require(chief(), "Solo jefatura administra cuentas.");
         var volunteer =
                 new Volunteer(
-                        id,
-                        r.role(),
-                        r.status(),
-                        r.graduated(),
-                        r.radioQualified(),
-                        r.pilotQualified());
+                        volunteerId,
+                        review.role(),
+                        review.status(),
+                        review.graduated(),
+                        review.radioQualified(),
+                        review.pilotQualified());
         volunteer.protectOwnAdministration(actor().id());
-        participation.lockCommitments(id);
-        repository.lock(id);
-        var previous = repository.profile(id);
-        if (r.graduated()
-                && !Boolean.TRUE.equals(previous.get("graduated"))
-                && "VOLUNTARIO".equals(r.role())) {
-            var assessment = graduation.assess(id);
-            valid(
-                    assessment.eligible(),
-                    "La graduación requiere alcanzar la meta de formación con horas reconocidas menos penalizaciones; el saldo se acumula entre años.");
-            cycles.graduation(
-                    id,
-                    actor().id(),
-                    now(),
-                    new AnnualEnrollmentRepository.GraduationEligibilityData(
-                            assessment.balance(), assessment.target()),
-                    r.comment());
-            cycles.register(id, now().getYear(), actor().id(), now());
-            cycles.preserveCommitments(id, actor().id(), now());
+        participation.lockCommitments(volunteerId);
+        repository.lock(volunteerId);
+        var previousProfile = repository.profile(volunteerId);
+        if (review.graduated()
+                && !previousProfile.graduated()
+                && "VOLUNTARIO".equals(review.role())) {
+            recordGraduationAndEnroll(volunteerId, review.comment());
         }
-        repository.save(volunteer, r.comment());
-        participation.reevaluate(id);
+        repository.save(volunteer, review.comment());
+        participation.reevaluate(volunteerId);
+        notifyAccountReview(volunteerId, review);
+    }
+
+    private void recordGraduationAndEnroll(UUID volunteerId, String reviewComment) {
+        var assessment = graduation.assess(volunteerId);
+        valid(
+                assessment.eligible(),
+                "La graduación requiere alcanzar la meta de formación con horas reconocidas menos penalizaciones; el saldo se acumula entre años.");
+        cycles.graduation(
+                volunteerId,
+                actor().id(),
+                now(),
+                new AnnualEnrollmentRepository.GraduationEligibilityData(
+                        assessment.balance(), assessment.target()),
+                reviewComment);
+        cycles.register(volunteerId, now().getYear(), actor().id(), now());
+        cycles.preserveCommitments(volunteerId, actor().id(), now());
+    }
+
+    private void notifyAccountReview(UUID volunteerId, Review review) {
         notifyUser(
-                id,
+                volunteerId,
                 "CUENTA",
                 "Revisión de cuenta: "
-                        + r.status()
+                        + review.status()
                         + ". Condición: "
-                        + (r.graduated() ? "GRADUADO" : "FORMACION")
+                        + (review.graduated() ? "GRADUADO" : "FORMACION")
                         + "; radio: "
-                        + (r.radioQualified() ? "habilitado" : "no habilitado")
+                        + (review.radioQualified() ? "habilitado" : "no habilitado")
                         + "; piloto: "
-                        + (r.pilotQualified() ? "habilitado" : "no habilitado")
+                        + (review.pilotQualified() ? "habilitado" : "no habilitado")
                         + ". "
-                        + r.comment(),
+                        + review.comment(),
                 "/profile?section=condition");
     }
 }

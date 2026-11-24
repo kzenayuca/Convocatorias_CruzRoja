@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 public interface AnnualEnrollmentRepository {
-    List<Map<String, Object>> list(UUID user);
+    List<AnnualEnrollmentSummary> list(UUID user);
 
     boolean register(UUID user, int year, UUID actor, LocalDateTime at);
 
