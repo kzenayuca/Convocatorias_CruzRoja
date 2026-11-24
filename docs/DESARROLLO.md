@@ -116,8 +116,8 @@ Spotless no sustituye SonarLint; un análisis sin hallazgos no garantiza ausenci
 comprueba formato y ejecuta Selenium con cobertura backend. Se conservan reportes y diagnóstico.
 Los resultados remotos solo se conocen después de ejecutar Actions; tener YAML no prueba que pasó.
 
-Para configurar el runner Windows, SonarQube local, el Quality Gate y las evidencias
-de la exposición: [guía del pipeline backend](PIPELINE.md).
+Para entender SonarQube temporal en GitHub, el análisis local Windows/Linux, el
+Quality Gate y las evidencias: [guía del pipeline backend](PIPELINE.md).
 
 ## Mantenimiento y seguridad
 
