@@ -1,9 +1,12 @@
 package pe.cruzroja.convocatorias.membership.infrastructure;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import pe.cruzroja.convocatorias.membership.application.*;
 import pe.cruzroja.convocatorias.membership.domain.Volunteer;
+import pe.cruzroja.convocatorias.shared.application.NotFound;
 import pe.cruzroja.convocatorias.shared.infrastructure.JdbcSupport;
 
 public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRepository {
@@ -13,6 +16,53 @@ public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRep
 
     private static final String PROFILES =
             "SELECT u.id,u.name,u.surnames,u.email,u.role,u.graduated,u.status,u.occupation,u.review_comment,p.document,p.phone,p.availability,p.radio_qualified,p.pilot_qualified FROM users u LEFT JOIN volunteer_profiles p ON p.user_id=u.id ";
+
+    private static final RowMapper<VolunteerProfile> VOLUNTEER_PROFILE =
+            (result, rowNumber) ->
+                    new VolunteerProfile(
+                            result.getObject("id", UUID.class),
+                            result.getString("name"),
+                            result.getString("surnames"),
+                            result.getString("email"),
+                            result.getString("role"),
+                            result.getBoolean("graduated"),
+                            result.getString("status"),
+                            result.getString("occupation"),
+                            result.getString("review_comment"),
+                            result.getString("document"),
+                            result.getString("phone"),
+                            result.getString("availability"),
+                            result.getObject("radio_qualified", Boolean.class),
+                            result.getObject("pilot_qualified", Boolean.class));
+
+    private static final RowMapper<PendingProfileChange> PENDING_PROFILE_CHANGE =
+            (result, rowNumber) ->
+                    new PendingProfileChange(
+                            result.getObject("user_id", UUID.class),
+                            result.getString("name"),
+                            result.getString("surnames"),
+                            result.getString("email"),
+                            result.getString("document"),
+                            result.getString("occupation"),
+                            result.getObject("submitted_at", LocalDateTime.class),
+                            result.getObject("request_id", UUID.class));
+
+    private static final RowMapper<ProfileChangeRequest> PROFILE_CHANGE_REQUEST =
+            (result, rowNumber) ->
+                    new ProfileChangeRequest(
+                            result.getObject("id", UUID.class),
+                            result.getObject("user_id", UUID.class),
+                            result.getString("name"),
+                            result.getString("surnames"),
+                            result.getString("email"),
+                            result.getString("document"),
+                            result.getString("occupation"),
+                            result.getObject("submitted_at", LocalDateTime.class),
+                            result.getString("status"),
+                            result.getString("resolution_comment"),
+                            result.getObject("resolved_by", UUID.class),
+                            result.getObject("resolved_at", LocalDateTime.class),
+                            result.getString("resolved_name"));
 
     public void register(UUID id, AccountsUseCases.Registration r, String hash) {
         var p = r.profile();
@@ -31,12 +81,12 @@ public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRep
                 r.phone());
     }
 
-    public Map<String, Object> profile(UUID id) {
-        return row(PROFILES + " WHERE u.id=?", id);
+    public VolunteerProfile profile(UUID id) {
+        return requiredRow(PROFILES + " WHERE u.id=?", VOLUNTEER_PROFILE, id);
     }
 
-    public List<Map<String, Object>> users() {
-        return rows(PROFILES + " ORDER BY u.status,u.name");
+    public List<VolunteerProfile> users() {
+        return db.query(PROFILES + " ORDER BY u.status,u.name", VOLUNTEER_PROFILE);
     }
 
     public void phone(UUID id, String phone) {
@@ -73,15 +123,17 @@ public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRep
                 "SELECT id FROM users WHERE role='JEFATURA' AND status='ACTIVO'", UUID.class);
     }
 
-    public List<Map<String, Object>> profileRequests(UUID user) {
-        return rows(
+    public List<ProfileChangeRequest> profileRequests(UUID user) {
+        return db.query(
                 "SELECT r.*,u.name AS resolved_name FROM profile_change_requests r LEFT JOIN users u ON u.id=r.resolved_by WHERE r.user_id=? ORDER BY r.submitted_at DESC,r.id",
+                PROFILE_CHANGE_REQUEST,
                 user);
     }
 
-    public Map<String, Object> profileRequest(UUID request) {
-        return row(
+    public ProfileChangeRequest profileRequest(UUID request) {
+        return requiredRow(
                 "SELECT r.*,u.name AS resolved_name FROM profile_change_requests r LEFT JOIN users u ON u.id=r.resolved_by WHERE r.id=?",
+                PROFILE_CHANGE_REQUEST,
                 request);
     }
 
@@ -100,24 +152,27 @@ public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRep
                 request);
     }
 
-    public List<Map<String, Object>> changes() {
-        return rows("SELECT * FROM profile_changes ORDER BY submitted_at");
+    public List<PendingProfileChange> changes() {
+        return db.query(
+                "SELECT * FROM profile_changes ORDER BY submitted_at", PENDING_PROFILE_CHANGE);
     }
 
-    public Map<String, Object> lockChange(UUID id) {
-        return row("SELECT * FROM profile_changes WHERE user_id=? FOR UPDATE", id);
+    public PendingProfileChange lockChange(UUID id) {
+        return requiredRow(
+                "SELECT * FROM profile_changes WHERE user_id=? FOR UPDATE",
+                PENDING_PROFILE_CHANGE,
+                id);
     }
 
-    public void approveChange(UUID id, Map<String, Object> p) {
+    public void approveChange(UUID id, PendingProfileChange p) {
         db.update(
                 "UPDATE users SET name=?,surnames=?,email=?,occupation=? WHERE id=?",
-                p.get("name"),
-                p.get("surnames"),
-                p.get("email"),
-                p.get("occupation"),
+                p.name(),
+                p.surnames(),
+                p.email(),
+                p.occupation(),
                 id);
-        db.update(
-                "UPDATE volunteer_profiles SET document=? WHERE user_id=?", p.get("document"), id);
+        db.update("UPDATE volunteer_profiles SET document=? WHERE user_id=?", p.document(), id);
     }
 
     public void deleteChange(UUID id) {
@@ -126,6 +181,12 @@ public class JdbcVolunteerRepository extends JdbcSupport implements VolunteerRep
 
     public void lock(UUID id) {
         row("SELECT id FROM users WHERE id=? FOR UPDATE", id);
+    }
+
+    private <T> T requiredRow(String sql, RowMapper<T> mapper, UUID id) {
+        var results = db.query(sql, mapper, id);
+        if (results.isEmpty()) throw new NotFound();
+        return results.get(0);
     }
 
     public void save(Volunteer v, String comment) {

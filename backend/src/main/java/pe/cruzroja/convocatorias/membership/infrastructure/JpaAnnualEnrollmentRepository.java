@@ -3,11 +3,11 @@ package pe.cruzroja.convocatorias.membership.infrastructure;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentRepository;
+import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentSummary;
 import pe.cruzroja.convocatorias.membership.infrastructure.persistence.AnnualEnrollmentEntity;
 import pe.cruzroja.convocatorias.membership.infrastructure.persistence.GraduationHistoryEntity;
 
@@ -22,7 +22,7 @@ public class JpaAnnualEnrollmentRepository implements AnnualEnrollmentRepository
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> list(UUID user) {
+    public List<AnnualEnrollmentSummary> list(UUID user) {
         return entities
                 .createQuery(
                         """

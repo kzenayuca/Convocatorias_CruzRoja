@@ -2,7 +2,7 @@ package pe.cruzroja.convocatorias.membership.web;
 
 import java.util.*;
 import org.springframework.web.bind.annotation.*;
-import pe.cruzroja.convocatorias.membership.application.AccountsUseCases;
+import pe.cruzroja.convocatorias.membership.application.*;
 import pe.cruzroja.convocatorias.membership.application.AccountsUseCases.*;
 
 @RestController
@@ -15,12 +15,12 @@ public class AccountsController {
     }
 
     @PostMapping("/auth/register")
-    public Map<String, String> register(@RequestBody Registration r) {
+    public RegistrationReceipt register(@RequestBody Registration r) {
         return useCases.register(r);
     }
 
     @GetMapping("/profile")
-    public Map<String, Object> profile() {
+    public VolunteerProfile profile() {
         return useCases.profile();
     }
 
@@ -35,17 +35,17 @@ public class AccountsController {
     }
 
     @GetMapping("/profile/changes")
-    public List<Map<String, Object>> profileRequests() {
+    public List<ProfileChangeRequest> profileRequests() {
         return useCases.profileRequests();
     }
 
     @GetMapping("/profile-requests/{id}")
-    public Map<String, Object> profileRequest(@PathVariable UUID id) {
+    public ProfileChangeRequest profileRequest(@PathVariable UUID id) {
         return useCases.profileRequest(id);
     }
 
     @GetMapping("/users")
-    public List<Map<String, Object>> users() {
+    public List<VolunteerProfile> users() {
         return useCases.users();
     }
 
@@ -56,7 +56,7 @@ public class AccountsController {
     }
 
     @GetMapping("/users/changes")
-    public List<Map<String, Object>> changes() {
+    public List<PendingProfileChange> changes() {
         return useCases.changes();
     }
 

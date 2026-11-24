@@ -3518,8 +3518,8 @@ class WorkflowTest {
         var repository = new JdbcVolunteerRepository(db);
         var profile = repository.profile(volunteer);
 
-        assertEquals(volunteer, profile.get("id"));
-        assertEquals("Ana Torres", profile.get("name"));
-        assertEquals("voluntario@demo.pe", profile.get("email"));
+        assertEquals(volunteer, profile.id());
+        assertEquals("Ana Torres", profile.name());
+        assertEquals("voluntario@demo.pe", profile.email());
     }
 }

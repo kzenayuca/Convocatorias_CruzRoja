@@ -80,7 +80,7 @@ public class AccountsUseCases extends UseCaseSupport {
         }
     }
 
-    public Map<String, String> register(Registration r) {
+    public RegistrationReceipt register(Registration r) {
         UUID user = UUID.randomUUID();
         repository.register(user, r, passwords.encode(r.password()));
         for (var chief : repository.chiefs())
@@ -97,12 +97,11 @@ public class AccountsUseCases extends UseCaseSupport {
                 "CUENTA",
                 "Tu solicitud de cuenta está pendiente de Jefatura.",
                 "/profile?section=condition");
-        return Map.of(
-                "mensaje",
+        return new RegistrationReceipt(
                 "Solicitud registrada. Jefatura debe activar tu cuenta antes de iniciar sesión.");
     }
 
-    public Map<String, Object> profile() {
+    public VolunteerProfile profile() {
         return repository.profile(actor().id());
     }
 
@@ -117,15 +116,15 @@ public class AccountsUseCases extends UseCaseSupport {
                 "Ya tienes un cambio de perfil pendiente. Espera su resolución antes de enviar otro.");
         repository.requestChange(actor().id(), p);
         var request = repository.lockChange(actor().id());
-        UUID id = (UUID) request.get("request_id");
+        UUID id = request.requestId();
         var current = repository.profile(actor().id());
         for (var chief : repository.chiefs())
             notifyUser(
                     chief,
                     "PERFIL",
-                    current.get("name")
+                    current.name()
                             + " "
-                            + current.get("surnames")
+                            + current.surnames()
                             + " solicita un cambio de perfil. Revisa los datos propuestos.",
                     "/users?change=" + id);
         notifyUser(
@@ -135,24 +134,24 @@ public class AccountsUseCases extends UseCaseSupport {
                 "/profile?request=" + id);
     }
 
-    public List<Map<String, Object>> profileRequests() {
+    public List<ProfileChangeRequest> profileRequests() {
         return repository.profileRequests(actor().id());
     }
 
-    public Map<String, Object> profileRequest(UUID id) {
+    public ProfileChangeRequest profileRequest(UUID id) {
         var r = repository.profileRequest(id);
         require(
-                chief() || actor().id().equals(r.get("user_id")),
+                chief() || actor().id().equals(r.userId()),
                 "No puedes consultar solicitudes de perfil ajenas.");
         return r;
     }
 
-    public List<Map<String, Object>> users() {
+    public List<VolunteerProfile> users() {
         require(chief(), "Solo jefatura puede consultar los datos personales de las cuentas.");
         return repository.users();
     }
 
-    public List<Map<String, Object>> changes() {
+    public List<PendingProfileChange> changes() {
         require(chief(), "Solo jefatura revisa cambios de perfil.");
         return repository.changes();
     }
@@ -166,7 +165,7 @@ public class AccountsUseCases extends UseCaseSupport {
     public void resolveProfile(UUID id, Decision r) {
         require(chief(), "Solo jefatura revisa cambios de perfil.");
         var change = repository.lockChange(id);
-        UUID request = (UUID) change.get("request_id");
+        UUID request = change.requestId();
         valid(
                 r.requestId() == null || r.requestId().equals(request),
                 "La solicitud cambió o ya fue resuelta. Actualiza la pantalla.");
@@ -194,9 +193,7 @@ public class AccountsUseCases extends UseCaseSupport {
         participation.lockCommitments(id);
         repository.lock(id);
         var previous = repository.profile(id);
-        if (r.graduated()
-                && !Boolean.TRUE.equals(previous.get("graduated"))
-                && "VOLUNTARIO".equals(r.role())) {
+        if (r.graduated() && !previous.graduated() && "VOLUNTARIO".equals(r.role())) {
             var assessment = graduation.assess(id);
             valid(
                     assessment.eligible(),
