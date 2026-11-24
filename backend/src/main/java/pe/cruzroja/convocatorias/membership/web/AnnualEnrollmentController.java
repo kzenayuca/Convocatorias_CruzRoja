@@ -2,6 +2,7 @@ package pe.cruzroja.convocatorias.membership.web;
 
 import java.util.*;
 import org.springframework.web.bind.annotation.*;
+import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentDetail;
 import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentUseCases;
 import pe.cruzroja.convocatorias.shared.application.ExecutionContext;
 
@@ -17,7 +18,7 @@ public class AnnualEnrollmentController {
     }
 
     @GetMapping("/profile/annual-enrollments")
-    public Map<String, Object> mine() {
+    public AnnualEnrollmentDetail mine() {
         return useCases.mine();
     }
 
@@ -27,7 +28,7 @@ public class AnnualEnrollmentController {
     }
 
     @GetMapping("/users/{id}/annual-enrollments")
-    public Map<String, Object> detail(@PathVariable UUID id) {
+    public AnnualEnrollmentDetail detail(@PathVariable UUID id) {
         return useCases.detail(id);
     }
 

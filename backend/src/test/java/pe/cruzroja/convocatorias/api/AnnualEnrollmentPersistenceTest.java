@@ -22,6 +22,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentRepository;
 import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentRepository.GraduationEligibilityData;
+import pe.cruzroja.convocatorias.membership.application.AnnualEnrollmentSummary;
 import pe.cruzroja.convocatorias.shared.application.NotificationPublisher;
 
 /**
@@ -58,15 +59,17 @@ class AnnualEnrollmentPersistenceTest {
                             var cycles = repository.list(user);
                             assertEquals(
                                     List.of(2042, 2040),
-                                    cycles.stream().map(row -> row.get("year")).toList());
+                                    cycles.stream().map(AnnualEnrollmentSummary::year).toList());
                             var original = cycles.get(1);
-                            assertEquals(CHIEF, original.get("registered_by"));
-                            assertEquals(AT, original.get("registered_at"));
-                            assertEquals("INSCRIPCION", original.get("source"));
-                            assertEquals(
-                                    Set.of("year", "registered_by", "registered_at", "source"),
-                                    original.keySet());
+                            assertEquals(CHIEF, original.registeredBy());
+                            assertEquals(AT, original.registeredAt());
+                            assertEquals("INSCRIPCION", original.source());
                             var response = json.valueToTree(original);
+                            assertEquals(4, response.size());
+                            for (String field :
+                                    Set.of("year", "registered_by", "registered_at", "source")) {
+                                assertTrue(response.has(field), field);
+                            }
                             assertEquals(CHIEF.toString(), response.get("registered_by").asText());
                             assertTrue(response.has("registered_at"));
                             status.setRollbackOnly();
@@ -88,10 +91,11 @@ class AnnualEnrollmentPersistenceTest {
 
                             var cycles = repository.list(user);
                             assertEquals(1, cycles.size());
-                            assertEquals(2040, cycles.get(0).get("year"));
-                            assertEquals("MIGRACION", cycles.get(0).get("source"));
-                            assertTrue(cycles.get(0).containsKey("registered_by"));
-                            assertNull(cycles.get(0).get("registered_by"));
+                            assertEquals(2040, cycles.get(0).year());
+                            assertEquals("MIGRACION", cycles.get(0).source());
+                            assertTrue(
+                                    json.valueToTree(cycles.get(0)).path("registered_by").isNull());
+                            assertNull(cycles.get(0).registeredBy());
                             assertTrue(repository.list(UUID.randomUUID()).isEmpty());
                             status.setRollbackOnly();
                         });
@@ -120,13 +124,13 @@ class AnnualEnrollmentPersistenceTest {
                             var cycles = repository.list(user);
                             assertEquals(
                                     List.of(2042, 2040),
-                                    cycles.stream().map(row -> row.get("year")).toList());
-                            assertEquals("INSCRIPCION", cycles.get(0).get("source"));
-                            assertEquals(user, cycles.get(0).get("registered_by"));
-                            assertEquals(AT.minusDays(1), cycles.get(0).get("registered_at"));
-                            assertEquals("GRADUACION", cycles.get(1).get("source"));
-                            assertEquals(CHIEF, cycles.get(1).get("registered_by"));
-                            assertEquals(AT, cycles.get(1).get("registered_at"));
+                                    cycles.stream().map(AnnualEnrollmentSummary::year).toList());
+                            assertEquals("INSCRIPCION", cycles.get(0).source());
+                            assertEquals(user, cycles.get(0).registeredBy());
+                            assertEquals(AT.minusDays(1), cycles.get(0).registeredAt());
+                            assertEquals("GRADUACION", cycles.get(1).source());
+                            assertEquals(CHIEF, cycles.get(1).registeredBy());
+                            assertEquals(AT, cycles.get(1).registeredAt());
                             assertTrue(repository.list(other).isEmpty());
                             status.setRollbackOnly();
                         });

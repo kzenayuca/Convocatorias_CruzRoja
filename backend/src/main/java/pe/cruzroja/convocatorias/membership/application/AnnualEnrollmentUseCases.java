@@ -26,21 +26,18 @@ public class AnnualEnrollmentUseCases extends UseCaseSupport {
         }
     }
 
-    public Map<String, Object> mine() {
+    public AnnualEnrollmentDetail mine() {
         return detail(actor().id());
     }
 
-    public Map<String, Object> detail(UUID user) {
+    public AnnualEnrollmentDetail detail(UUID user) {
         require(
                 chief() || actor().id().equals(user),
                 "Solo puedes consultar tu inscripción anual.");
         var p = volunteers.profile(user);
-        return Map.of(
-                "applicable",
-                "VOLUNTARIO".equals(p.get("role")) && Boolean.TRUE.equals(p.get("graduated")),
-                "current_year",
+        return new AnnualEnrollmentDetail(
+                "VOLUNTARIO".equals(p.role()) && p.graduated(),
                 now().getYear(),
-                "enrollments",
                 repository.list(user));
     }
 
@@ -51,9 +48,7 @@ public class AnnualEnrollmentUseCases extends UseCaseSupport {
         volunteers.lock(user);
         var p = volunteers.profile(user);
         valid(
-                "VOLUNTARIO".equals(p.get("role"))
-                        && "ACTIVO".equals(p.get("status"))
-                        && Boolean.TRUE.equals(p.get("graduated")),
+                "VOLUNTARIO".equals(p.role()) && "ACTIVO".equals(p.status()) && p.graduated(),
                 "La inscripción anual corresponde a voluntarios graduados activos.");
         valid(r.year() >= now().getYear(), "No se crean inscripciones anuales retroactivas.");
         if (repository.register(user, r.year(), actor().id(), now()))

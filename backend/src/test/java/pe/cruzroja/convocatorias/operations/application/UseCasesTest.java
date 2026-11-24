@@ -119,7 +119,9 @@ class UseCasesTest {
         when(context.actor()).thenReturn(new Actor(chief, "JEFATURA", false));
         var repo = mock(VolunteerRepository.class);
         var participation = mock(ServiceParticipation.class);
-        when(repo.profile(user)).thenReturn(Map.of("graduated", true));
+        var profile = mock(pe.cruzroja.convocatorias.membership.application.VolunteerProfile.class);
+        when(profile.graduated()).thenReturn(true);
+        when(repo.profile(user)).thenReturn(profile);
         var useCase =
                 new AccountsUseCases(
                         repo,

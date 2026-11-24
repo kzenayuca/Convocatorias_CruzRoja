@@ -6,9 +6,9 @@ import pe.cruzroja.convocatorias.membership.domain.Volunteer;
 public interface VolunteerRepository {
     void register(UUID id, AccountsUseCases.Registration request, String passwordHash);
 
-    Map<String, Object> profile(UUID id);
+    VolunteerProfile profile(UUID id);
 
-    List<Map<String, Object>> users();
+    List<VolunteerProfile> users();
 
     void phone(UUID id, String phone);
 
@@ -18,18 +18,18 @@ public interface VolunteerRepository {
 
     List<UUID> chiefs();
 
-    List<Map<String, Object>> profileRequests(UUID user);
+    List<ProfileChangeRequest> profileRequests(UUID user);
 
-    Map<String, Object> profileRequest(UUID request);
+    ProfileChangeRequest profileRequest(UUID request);
 
     void resolveChange(
             UUID request, boolean approved, String comment, UUID actor, java.time.LocalDateTime at);
 
-    List<Map<String, Object>> changes();
+    List<PendingProfileChange> changes();
 
-    Map<String, Object> lockChange(UUID id);
+    PendingProfileChange lockChange(UUID id);
 
-    void approveChange(UUID id, Map<String, Object> change);
+    void approveChange(UUID id, PendingProfileChange change);
 
     void deleteChange(UUID id);
 
