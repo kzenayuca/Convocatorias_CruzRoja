@@ -10,6 +10,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import pe.cruzroja.convocatorias.operations.application.ServicesUseCases;
 import pe.cruzroja.convocatorias.operations.domain.EnrollmentStatus;
@@ -21,6 +22,7 @@ import pe.cruzroja.convocatorias.shared.application.NotFound;
 
 /** Real Hibernate mappings against PostgreSQL; every fixture rolls back independently. */
 @EnabledIfEnvironmentVariable(named = "TEST_DB_URL", matches = ".+")
+@ActiveProfiles("local-demo")
 @SpringBootTest(
         properties = {
             "spring.datasource.url=${TEST_DB_URL}",

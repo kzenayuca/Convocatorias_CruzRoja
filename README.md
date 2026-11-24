@@ -58,6 +58,10 @@ y recrearlo con `docker compose --profile tools up -d adminer` para aplicar el e
 
 ## Probar con datos demo
 
+Inicia el backend con `./mvnw spring-boot:run -Dspring-boot.run.profiles=local-demo` en Bash
+o `.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local-demo"` en PowerShell.
+Usa el perfil `local-demo` con una base desechable de desarrollo.
+
 Contraseña demo: `convocatorias`.
 
 | Perfil | Correo |

@@ -13,12 +13,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import pe.cruzroja.convocatorias.membership.infrastructure.JdbcVolunteerRepository;
 import pe.cruzroja.convocatorias.operations.infrastructure.JdbcCalloutRepository;
 
 /** Solo contra una base explícita de pruebas; no usa el volumen local habitual. */
 @EnabledIfEnvironmentVariable(named = "TEST_DB_URL", matches = ".+")
+@ActiveProfiles("local-demo")
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {

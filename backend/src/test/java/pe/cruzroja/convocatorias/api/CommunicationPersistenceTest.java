@@ -13,6 +13,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import pe.cruzroja.convocatorias.communications.domain.Announcement;
@@ -22,6 +23,7 @@ import pe.cruzroja.convocatorias.communications.web.NotificationResponse;
 import pe.cruzroja.convocatorias.shared.application.NotificationPublisher;
 
 @EnabledIfEnvironmentVariable(named = "TEST_DB_URL", matches = ".+")
+@ActiveProfiles("local-demo")
 @SpringBootTest(
         properties = {
             "spring.datasource.url=${TEST_DB_URL}",
