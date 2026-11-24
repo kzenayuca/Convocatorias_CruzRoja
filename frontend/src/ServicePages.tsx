@@ -168,42 +168,202 @@ function toCalloutForm(callout: Row): Row {
 function toCalloutUpdateRequest(callout: Row, values: Row): Row {
   return { ...values, category: callout.service_category || values.category || DEFAULT_CATEGORY, code: callout.service_code };
 }
-function ResponsiblePanel({ id, current }: { id: string; current?: string }) {
-  const candidates = useData<Row[]>(`/callouts/${id}/responsible-candidates`, []);
-  const history = useData<Row[]>(`/callouts/${id}/responsible/history`, []); const [changing, setChanging] = useState(false);
-  return <details className="section-block"><summary>{current ? 'Responsable asignado · jefatura' : 'Asignar responsable · jefatura'}</summary><p>Solo un voluntario graduado activo ya inscrito como voluntario general, sin cruce horario. Verifica los requisitos de la convocatoria. No se duplica su plaza ni se convierte al piloto/radioperador. Al retirar la responsabilidad conserva su inscripción, pero pierde los permisos de gestión.</p><ErrorNotice message={candidates.error || history.error}/>
-    {current && <><p>Ya hay un responsable. No se puede asignar otro sin registrar un cambio explícito.</p><button className="button secondary" onClick={() => setChanging(!changing)}>{changing ? 'Cancelar cambio' : 'Cambiar o retirar responsable'}</button></>}
-    {(!current || changing) && <DataForm key={current ?? 'none'} fields={[{ name: 'userId', label: current ? 'Nuevo responsable (vacío = retirar responsabilidad)' : 'Voluntario inscrito', optional: !!current, options: [{ value: '', label: current ? 'Retirar responsabilidad' : 'Selecciona una persona' }, ...candidates.data.map(u => ({ value: u.id, label: `${u.name} ${u.surnames}` }))] }, ...(current ? [{ name: 'reason', label: 'Motivo obligatorio del cambio o retiro', type: 'textarea' }] : [])]} label={current ? 'Confirmar cambio auditado' : 'Asignar responsable'} submit={async v => { await api(current ? `/callouts/${id}/responsible/change` : `/callouts/${id}/responsible`, current ? 'POST' : 'PUT', current ? { userId: v.userId || null, expectedResponsibleId: current, reason: v.reason } : { userId: v.userId }); setChanging(false); }}/ >}
-    {!!history.data.length && <details><summary>Historial de responsables</summary>{history.data.map(h => <p key={h.id}>{date(h.changed_at)} · {h.changed_name}: {h.previous_name || 'Sin responsable'} → {h.next_name || 'Sin responsable'} · {h.reason}</p>)}</details>}
-  </details>;
+/** Primera asignación (PUT) o cambio auditado con motivo (POST). */
+function saveResponsible(calloutId: string, current: string | undefined, values: Row) {
+  if (!current) return api(`/callouts/${calloutId}/responsible`, 'PUT', { userId: values.userId });
+  return api(`/callouts/${calloutId}/responsible/change`, 'POST', {
+    userId: values.userId || null,
+    expectedResponsibleId: current,
+    reason: values.reason,
+  });
 }
-function AssignmentPanel({ id, requirements }: { id: string; requirements: string }) {
-  const [position, setPosition] = useState('SOCORRISTA'); const [userId, setUserId] = useState('');
+
+function responsibleFields(current: string | undefined, candidates: Row[]): Field[] {
+  const people = candidates.map(person => ({ value: person.id, label: `${person.name} ${person.surnames}` }));
+  const userField: Field = {
+    name: 'userId',
+    label: current ? 'Nuevo responsable (vacío = retirar responsabilidad)' : 'Voluntario inscrito',
+    optional: !!current,
+    options: [{ value: '', label: current ? 'Retirar responsabilidad' : 'Selecciona una persona' }, ...people],
+  };
+  const reasonField: Field = { name: 'reason', label: 'Motivo obligatorio del cambio o retiro', type: 'textarea' };
+  return current ? [userField, reasonField] : [userField];
+}
+
+function ResponsiblePanel({ id, current }: Readonly<{ id: string; current?: string }>) {
+  const candidates = useData<Row[]>(`/callouts/${id}/responsible-candidates`, []);
+  const history = useData<Row[]>(`/callouts/${id}/responsible/history`, []);
+  const [changing, setChanging] = useState(false);
+
+  async function handleSave(values: Row) {
+    await saveResponsible(id, current, values);
+    setChanging(false);
+  }
+
+  return (
+    <details className="section-block">
+      <summary>{current ? 'Responsable asignado · jefatura' : 'Asignar responsable · jefatura'}</summary>
+      <p>
+        Solo un voluntario graduado activo ya inscrito como voluntario general, sin cruce horario. Verifica los requisitos de la
+        convocatoria. No se duplica su plaza ni se convierte al piloto/radioperador. Al retirar la responsabilidad conserva su
+        inscripción, pero pierde los permisos de gestión.
+      </p>
+      <ErrorNotice message={candidates.error || history.error}/>
+      {current && (
+        <>
+          <p>Ya hay un responsable. No se puede asignar otro sin registrar un cambio explícito.</p>
+          <button type="button" className="button secondary" onClick={() => setChanging(!changing)}>
+            {changing ? 'Cancelar cambio' : 'Cambiar o retirar responsable'}
+          </button>
+        </>
+      )}
+      {(!current || changing) && (
+        <DataForm
+          key={current ?? 'none'}
+          fields={responsibleFields(current, candidates.data)}
+          label={current ? 'Confirmar cambio auditado' : 'Asignar responsable'}
+          submit={handleSave}
+        />
+      )}
+      {history.data.length > 0 && <ResponsibleHistory changes={history.data}/>}
+    </details>
+  );
+}
+
+function ResponsibleHistory({ changes }: Readonly<{ changes: Row[] }>) {
+  return (
+    <details>
+      <summary>Historial de responsables</summary>
+      {changes.map(change => (
+        <p key={change.id}>
+          {date(change.changed_at)} · {change.changed_name}: {change.previous_name || 'Sin responsable'} →{' '}
+          {change.next_name || 'Sin responsable'} · {change.reason}
+        </p>
+      ))}
+    </details>
+  );
+}
+
+const ASSIGNABLE_POSITIONS = ['SOCORRISTA', 'GRADUADO', 'RADIOPERADOR', 'PILOTO'];
+const ASSIGNMENT_CONFIRMED = 'Inscripción directa confirmada. Se notificó a la persona.';
+
+/** Quita tildes y mayúsculas para encontrar "Lucía" escribiendo "lucia". */
+function normalizeForSearch(text: string) {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+}
+
+function matchesName(person: Row, query: string) {
+  return normalizeForSearch(`${person.name} ${person.surnames}`).includes(normalizeForSearch(query));
+}
+
+function AssignmentPanel({ id, requirements }: Readonly<{ id: string; requirements: string }>) {
+  const [position, setPosition] = useState('SOCORRISTA');
+  const [userId, setUserId] = useState('');
   const [query, setQuery] = useState('');
-  const [verified, setVerified] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState('');
+  const [verified, setVerified] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const candidates = useData<Row[]>(`/callouts/${id}/assignment-candidates?position=${position}`, []);
-  useEffect(() => { setUserId(''); setQuery(''); setVerified(false); setSuccess(''); }, [id, position, requirements]);
-  const matches = candidates.data.filter(u => `${u.name} ${u.surnames}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()));
-  const options = ['SOCORRISTA', 'GRADUADO', 'RADIOPERADOR', 'PILOTO'];
-  return <details className="section-block"><summary>Inscribir directamente · jefatura</summary><p>Busca por nombre y selecciona una persona elegible. Verifica conocimientos, cursos y demás requisitos de esta convocatoria. No se omiten graduación, habilitaciones, cupo, plazo ni cruces de horario. Se notificará a la persona.</p>
-    <p className="multiline"><b>Requisitos que debes verificar:</b>{'\n'}{requirements}</p>
-    <form className="card flow-form" onSubmit={async e => {
-      e.preventDefault(); const form = e.currentTarget; setBusy(true); setError(''); setSuccess('');
-      try {
-        await api(`/callouts/${id}/assignments`, 'POST', { userId, position, requirementsVerified: verified });
-        setUserId(''); setVerified(false); setSuccess('Inscripción directa confirmada. Se notificó a la persona.'); saveSucceeded(form, 'Inscripción directa confirmada. Se notificó a la persona.'); changed();
-      } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-    }}>
-      <label className="field">Puesto<select name="assignmentPosition" value={position} onChange={e => setPosition(e.target.value)}>{options.map(p => <option key={p} value={p}>{positionNames[p]}</option>)}</select></label>
-      <label className="field">Buscar persona por nombre<input name="assignmentSearch" type="search" autoComplete="off" value={query} placeholder="Escribe nombres o apellidos…" onChange={e => { setQuery(e.target.value); setUserId(''); setVerified(false); }}/></label>
-      <label className="field">Persona elegible<select name="assignmentUser" required value={userId} onChange={e => { setUserId(e.target.value); setVerified(false); }} disabled={candidates.loading || busy}><option value="">Selecciona una persona</option>{matches.map(u => <option key={u.id} value={u.id}>{u.name} {u.surnames} · {u.graduated ? 'Graduado' : 'En formación'}</option>)}</select></label>
-      {!candidates.loading && !!candidates.data.length && !matches.length && <p>No hay coincidencias para ese nombre.</p>}
-      {!candidates.loading && !candidates.data.length && <p>No hay personas elegibles para este puesto con los cupos y horarios actuales.</p>}
-      <label className="requirement"><input name="assignmentVerified" type="checkbox" required checked={verified} onChange={e => setVerified(e.target.checked)}/>He verificado todos los requisitos declarados para esta persona.</label>
-      <ErrorNotice message={error || candidates.error}/>{success && <p role="status">{success}</p>}
-      <button className="button" disabled={busy || candidates.loading || !userId || !verified}>{busy ? 'Inscribiendo…' : 'Confirmar inscripción directa'}</button>
-    </form>
-  </details>;
+
+  useEffect(() => {
+    setUserId('');
+    setQuery('');
+    setVerified(false);
+    setSuccess('');
+  }, [id, position, requirements]);
+
+  const matches = candidates.data.filter(person => matchesName(person, query));
+  const hasCandidates = candidates.data.length > 0;
+
+  function changeQuery(text: string) {
+    setQuery(text);
+    setUserId('');
+    setVerified(false);
+  }
+
+  function choosePerson(personId: string) {
+    setUserId(personId);
+    setVerified(false);
+  }
+
+  async function handleAssign(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api(`/callouts/${id}/assignments`, 'POST', { userId, position, requirementsVerified: verified });
+      setUserId('');
+      setVerified(false);
+      setSuccess(ASSIGNMENT_CONFIRMED);
+      saveSucceeded(form, ASSIGNMENT_CONFIRMED);
+      changed();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <details className="section-block">
+      <summary>Inscribir directamente · jefatura</summary>
+      <p>
+        Busca por nombre y selecciona una persona elegible. Verifica conocimientos, cursos y demás requisitos de esta convocatoria.
+        No se omiten graduación, habilitaciones, cupo, plazo ni cruces de horario. Se notificará a la persona.
+      </p>
+      <p className="multiline"><b>Requisitos que debes verificar:</b>{'\n'}{requirements}</p>
+      <form className="card flow-form" onSubmit={handleAssign}>
+        <label className="field">
+          {'Puesto'}
+          <select name="assignmentPosition" value={position} onChange={e => setPosition(e.target.value)}>
+            {ASSIGNABLE_POSITIONS.map(item => <option key={item} value={item}>{positionNames[item]}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          {'Buscar persona por nombre'}
+          <input
+            name="assignmentSearch"
+            type="search"
+            autoComplete="off"
+            value={query}
+            placeholder="Escribe nombres o apellidos…"
+            onChange={e => changeQuery(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          {'Persona elegible'}
+          <select
+            name="assignmentUser"
+            required
+            value={userId}
+            onChange={e => choosePerson(e.target.value)}
+            disabled={candidates.loading || busy}
+          >
+            <option value="">Selecciona una persona</option>
+            {matches.map(person => (
+              <option key={person.id} value={person.id}>
+                {person.name} {person.surnames} · {person.graduated ? 'Graduado' : 'En formación'}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!candidates.loading && hasCandidates && matches.length === 0 && <p>No hay coincidencias para ese nombre.</p>}
+        {!candidates.loading && !hasCandidates && <p>No hay personas elegibles para este puesto con los cupos y horarios actuales.</p>}
+        <label className="requirement">
+          <input name="assignmentVerified" type="checkbox" required checked={verified} onChange={e => setVerified(e.target.checked)}/>
+          {'He verificado todos los requisitos declarados para esta persona.'}
+        </label>
+        <ErrorNotice message={error || candidates.error}/>
+        {success && <p><output>{success}</output></p>}
+        <button type="submit" className="button" disabled={busy || candidates.loading || !userId || !verified}>
+          {busy ? 'Inscribiendo…' : 'Confirmar inscripción directa'}
+        </button>
+      </form>
+    </details>
+  );
 }
 function TeamPage({ id, user, callout: c }: { id: string; user: Session; callout: Row }) {
   const applicants = useData<Row[]>(`/callouts/${id}/enrollments`, []);
@@ -245,11 +405,69 @@ function MaterialsPanel({ id }: { id: string }) {
     ]} submit={v => api(`/materials/${m.id}/handover`, 'POST', v)}/>}</details>)}
   </details>;
 }
-function PhotoForm({ id, onSaved }: { id: string; onSaved: () => void }) {
-  const [file, setFile] = useState<File>(); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
-  return <form className="soft-panel" onSubmit={async e => { e.preventDefault(); const form = e.currentTarget; if (!file) return; setBusy(true); setMessage(''); try { if (file.size > 10 * 1024 * 1024) throw new Error('Máximo 10 MB.'); const data = new FormData(); data.append('file', file); await api(`/callouts/${id}/photo`, 'POST', data); saveSucceeded(form, 'Foto guardada.'); onSaved(); changed(); setMessage('Foto guardada.'); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }}><label className="field">Foto opcional JPG/PNG · hasta 10 MB y 40 megapíxeles<input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/></label><button className="button secondary" disabled={busy}>Guardar foto</button><p role="status">{message}</p></form>;
+const MAX_PHOTO_MEGABYTES = 10;
+const MAX_PHOTO_BYTES = MAX_PHOTO_MEGABYTES * 1024 * 1024;
+const PHOTO_SAVED = 'Foto guardada.';
+
+function assertPhotoSize(file: File) {
+  if (file.size > MAX_PHOTO_BYTES) throw new Error(`Máximo ${MAX_PHOTO_MEGABYTES} MB.`);
 }
-function PhotoAttachment({ id, hasPhoto, closed }: { id: string; hasPhoto: boolean; closed: boolean }) {
+
+function uploadTeamPhoto(calloutId: string, file: File) {
+  const data = new FormData();
+  data.append('file', file);
+  return api(`/callouts/${calloutId}/photo`, 'POST', data);
+}
+
+function PhotoForm({ id, onSaved }: Readonly<{ id: string; onSaved: () => void }>) {
+  const [file, setFile] = useState<File>();
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!file) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      assertPhotoSize(file);
+      await uploadTeamPhoto(id, file);
+      saveSucceeded(form, PHOTO_SAVED);
+      onSaved();
+      changed();
+      setMessage(PHOTO_SAVED);
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="soft-panel" onSubmit={handleSubmit}>
+      <label className="field">
+        {`Foto opcional JPG/PNG · hasta ${MAX_PHOTO_MEGABYTES} MB y 40 megapíxeles`}
+        <input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/>
+      </label>
+      <button type="submit" className="button secondary" disabled={busy}>Guardar foto</button>
+      <p><output>{message}</output></p>
+    </form>
+  );
+}
+
+function attachButtonLabel(open: boolean, hasPhoto: boolean) {
+  if (open) return 'Cerrar adjunto';
+  return hasPhoto ? 'Reemplazar foto' : 'Adjuntar foto';
+}
+
+function PhotoAttachment({ id, hasPhoto, closed }: Readonly<{ id: string; hasPhoto: boolean; closed: boolean }>) {
   const [open, setOpen] = useState(false);
-  return <div>{closed && !hasPhoto && <p role="status">Servicio cerrado. Puedes adjuntar una foto del equipo ahora o más adelante; es opcional.</p>}<button className="button secondary" onClick={() => setOpen(!open)}>{open ? 'Cerrar adjunto' : hasPhoto ? 'Reemplazar foto' : 'Adjuntar foto'}</button>{open && <PhotoForm id={id} onSaved={() => setOpen(false)}/>}</div>;
+  return (
+    <div>
+      {closed && !hasPhoto && <p><output>Servicio cerrado. Puedes adjuntar una foto del equipo ahora o más adelante; es opcional.</output></p>}
+      <button type="button" className="button secondary" onClick={() => setOpen(!open)}>{attachButtonLabel(open, hasPhoto)}</button>
+      {open && <PhotoForm id={id} onSaved={() => setOpen(false)}/>}
+    </div>
+  );
 }
