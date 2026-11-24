@@ -26,13 +26,13 @@ def summarize(target):
     lines = [
         "# Backend: resultados reales",
         "",
-        f"Commit: `{os.environ.get('GITHUB_SHA', 'ejecución local')}`",
+        f"Commit: `{os.environ.get('GITHUB_SHA') or os.environ.get('GIT_COMMIT', 'ejecución local')}`",
         "",
         f"Total: {totals['tests']}; ejecutadas: {executed}; aprobadas: {passed}; "
         f"fallos: {totals['failures']}; errores: {totals['errors']}; "
         f"omitidas: {totals['skipped']}.",
         "",
-        "Las omitidas NO cuentan como aprobadas. Selenium se ejecuta en otro job.",
+        "Las omitidas NO cuentan como aprobadas. Selenium requiere su ejecucion E2E separada.",
         "",
         "| Suite | Total | Fallos | Errores | Omitidas |",
         "|---|---:|---:|---:|---:|",

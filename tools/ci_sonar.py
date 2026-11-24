@@ -141,6 +141,23 @@ def verify_gate(processing, gate):
         raise ValueError("Quality Gate rechazado: consultar quality-gate.json.")
 
 
+def analysis_context():
+    if os.environ.get("CI_PROVIDER") == "jenkins":
+        return {
+            "commit": os.environ["GIT_COMMIT"],
+            "run": os.environ["BUILD_URL"],
+            "ephemeral": False,
+            "provider": "jenkins",
+        }
+    return {
+        "commit": os.environ["GITHUB_SHA"],
+        "run": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+               f"/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+        "ephemeral": True,
+        "provider": "github",
+    }
+
+
 def collect():
     config = properties("sonar-project.properties")
     if not TASK_FILE.is_file():
@@ -181,19 +198,18 @@ def collect():
             ))
         ])
     (EVIDENCE / "issues.csv").write_text(output.getvalue(), encoding="utf-8-sig")
+    context = analysis_context()
     save("provenance.json", {
-        "commit": os.environ["GITHUB_SHA"],
-        "run": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
-               f"/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+        **context,
         "analysisId": analysis_id, "project": project,
         "scannerOutcome": os.environ.get("SCANNER_OUTCOME"),
-        "ephemeral": True,
     })
     status = gate["projectStatus"]
     lines = [
-        "# Backend: SonarQube temporal",
+        "# Backend: SonarQube " + ("temporal" if context["ephemeral"] else "en Jenkins"),
         "",
-        f"- Commit: `{os.environ['GITHUB_SHA']}`",
+        f"- Commit: `{context['commit']}`",
+        f"- Ejecucion: {context['run']}",
         f"- Analisis: `{analysis_id}`",
         f"- Quality Gate: **{status['status']}**",
         f"- Issues: **{len(issues)}**; security hotspots: **{len(hotspots)}**.",
@@ -209,8 +225,10 @@ def collect():
         "## Metricas importadas",
         *[f"- {item['metric']}: {item['value']}" for item in measures["component"]["measures"]],
         "",
-        "**Servidor desechable:** no conserva historial ni dashboard al terminar.",
-        "El Gate por defecto no se modifica. En el primer analisis puede no haber "
+        ("**Servidor desechable:** no conserva historial ni dashboard al terminar."
+         if context["ephemeral"] else
+         "**Servidor persistente:** Jenkins no elimina ni reconfigura SonarQube."),
+        "El Gate del servidor no se modifica. En el primer analisis puede no haber "
         "base para evaluar codigo nuevo; Gate OK no significa cero issues ni deuda reducida.",
         "Los JSON y CSV son la evidencia persistente. La revision manual sigue siendo necesaria.",
     ]

@@ -10,6 +10,10 @@ import unittest
 SCRIPT = Path(__file__).with_name("ci_maven_bootstrap.sh").resolve()
 
 
+@unittest.skipUnless(
+    os.name == "posix",
+    "Bootstrap Bash de agentes POSIX; Jenkins Windows usa retry nativo.",
+)
 class MavenBootstrapTest(unittest.TestCase):
     def run_bootstrap(self, failures):
         with tempfile.TemporaryDirectory() as directory:

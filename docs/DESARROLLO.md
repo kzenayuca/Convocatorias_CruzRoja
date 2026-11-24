@@ -112,6 +112,9 @@ Spotless no sustituye SonarLint; un análisis sin hallazgos no garantiza ausenci
 
 ## Integración continua
 
+El laboratorio Jenkins tiene su pipeline en `Jenkinsfile` y su configuración en
+[JENKINS.md](JENKINS.md). GitHub Actions se mantiene como respaldo independiente.
+
 `.github/workflows/ci.yml` construye backend/frontend, ejecuta integración PostgreSQL efímera,
 comprueba formato y ejecuta Selenium con cobertura backend. Se conservan reportes y diagnóstico.
 Los resultados remotos solo se conocen después de ejecutar Actions; tener YAML no prueba que pasó.
