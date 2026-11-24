@@ -43,12 +43,28 @@ jobs:
           cache: maven
       - name: Arquitectura, dominio, casos de uso y regresión con PostgreSQL aislado
         run: bash ./mvnw -B -ntp -Pquality verify
+      - name: Resumir pruebas y cobertura reales
+        if: always()
+        working-directory: .
+        run: python3 tools/ci_backend_report.py
       - name: Conservar ejecución y cobertura
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: junit-y-cobertura
           path: |
+            backend/target/surefire-reports/
+            backend/target/site/jacoco/
+            backend/target/ci-summary.md
+      - name: Conservar binarios para analizar el mismo código probado
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-sonar-input
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            backend/target/classes/
+            backend/target/test-classes/
             backend/target/surefire-reports/
             backend/target/site/jacoco/
       - name: Validar Docker Compose sin iniciar servicios
@@ -60,6 +76,53 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_*.py'
           python3 tools/build_model.py
           python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
+
+  # Solo código integrado y revisado; nunca ejecutar pull_request en una PC personal.
+  # Una rama canónica evita mezclar main/development en el proyecto Community.
+  sonar:
+    name: Backend · SonarQube local y Quality Gate
+    needs: backend
+    if: >-
+      vars.SONAR_ENABLED == 'true' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main') &&
+      github.ref_name == (vars.SONAR_BRANCH || 'development')
+    runs-on: [self-hosted, Windows, X64, sonarqube]
+    timeout-minutes: 20
+    concurrency:
+      group: sonarqube-local
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: powershell
+    env:
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'http://localhost:9000' }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY || 'convocatorias' }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-sonar-input
+          path: backend/target
+      - name: Analizar backend, esperar Quality Gate y guardar evidencia
+        run: .\tools\ci_sonar.ps1
+      - name: Conservar resultado SonarQube incluso si falla el Gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-sonarqube
+          path: |
+            backend/target/sonar/
+            backend/target/sonar-evidence/
 
   frontend:
     runs-on: ubuntu-24.04
