@@ -1,5 +1,9 @@
 # Pipeline backend: automático en GitHub, local para el laboratorio
 
+Para el laboratorio que exige **Jenkins**, usar el `Jenkinsfile` y la
+[guía Jenkins Windows/Linux](JENKINS.md). Este documento describe GitHub Actions,
+que se conserva como respaldo; su ejecución no sustituye la evidencia de Jenkins.
+
 ## Dos entornos, una configuración de análisis
 
 - **CI:** GitHub crea un runner Linux y un SonarQube temporal. No depende de ninguna
