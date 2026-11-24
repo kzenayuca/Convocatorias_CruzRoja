@@ -145,10 +145,18 @@ class UseCasesTest {
     @Test
     void chiefHasNoHoursTargetWithoutQueryingHours() {
         when(context.actor()).thenReturn(new Actor(chief, "JEFATURA", true));
-        var repo = mock(AttendanceRepository.class);
+        var records = mock(AttendanceRecordRepository.class);
+        var reviews = mock(AttendanceReviewRepository.class);
+        var justifications = mock(JustificationRepository.class);
+        var reports = mock(MonthlyReportRepository.class);
+        var directory = mock(AttendanceDirectoryRepository.class);
         var useCase =
                 new AttendanceUseCases(
-                        repo,
+                        records,
+                        reviews,
+                        justifications,
+                        reports,
+                        directory,
                         mock(EnrollmentRepository.class),
                         mock(CalloutRepository.class),
                         mock(CalloutWorkflow.class),
@@ -159,13 +167,13 @@ class UseCasesTest {
                         context,
                         notices);
         assertEquals(false, ((Map<?, ?>) useCase.progress()).get("applicable"));
-        verifyNoInteractions(repo);
+        verifyNoInteractions(records, reviews, justifications, reports, directory);
     }
 
     @Test
     void justificationDecisionAppendsAnAdjustmentAfterMonthlyClosure() {
         when(context.actor()).thenReturn(new Actor(chief, "JEFATURA", false));
-        var repo = mock(AttendanceRepository.class);
+        var justifications = mock(JustificationRepository.class);
         var workflow = mock(CalloutWorkflow.class);
         var ledger = mock(MonthlyLedger.class);
         UUID justification = UUID.randomUUID();
@@ -180,8 +188,8 @@ class UseCasesTest {
                         user,
                         "status",
                         "PENDIENTE");
-        when(repo.justification(justification, false)).thenReturn(j);
-        when(repo.justification(justification, true)).thenReturn(j);
+        when(justifications.justification(justification, false)).thenReturn(j);
+        when(justifications.justification(justification, true)).thenReturn(j);
         var c = Map.<String, Object>of("id", callout, "start_at", start);
         when(workflow.locked(callout)).thenReturn(c);
         when(ledger.closed(c)).thenReturn(true);
@@ -202,10 +210,14 @@ class UseCasesTest {
                                 "PENDIENTE",
                                 "justification_kind",
                                 "AUSENCIA"));
-        when(repo.justificationAttendance(justification)).thenReturn(attendance);
+        when(justifications.justificationAttendance(justification)).thenReturn(attendance);
         var useCase =
                 new AttendanceUseCases(
-                        repo,
+                        mock(AttendanceRecordRepository.class),
+                        mock(AttendanceReviewRepository.class),
+                        justifications,
+                        mock(MonthlyReportRepository.class),
+                        mock(AttendanceDirectoryRepository.class),
                         mock(EnrollmentRepository.class),
                         mock(CalloutRepository.class),
                         workflow,
@@ -217,10 +229,10 @@ class UseCasesTest {
                         notices);
         useCase.resolve(
                 justification, new AttendanceUseCases.Resolution(true, "Evidencia verificada"));
-        verify(repo)
+        verify(justifications)
                 .decision(
                         argThat(d -> d.before() == 6 && d.after() == 0 && d.actor().equals(chief)));
-        verify(repo)
+        verify(justifications)
                 .adjustment(
                         eq(YearMonth.of(2029, 12)), eq(user), any(Justification.Decision.class));
         verify(notices)
