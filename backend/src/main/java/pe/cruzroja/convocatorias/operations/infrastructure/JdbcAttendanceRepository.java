@@ -3,12 +3,21 @@ package pe.cruzroja.convocatorias.operations.infrastructure;
 import java.time.*;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
-import pe.cruzroja.convocatorias.operations.application.AttendanceRepository;
+import pe.cruzroja.convocatorias.operations.application.AttendanceDirectoryRepository;
+import pe.cruzroja.convocatorias.operations.application.AttendanceRecordRepository;
+import pe.cruzroja.convocatorias.operations.application.AttendanceReviewRepository;
 import pe.cruzroja.convocatorias.operations.application.EvidenceFile;
+import pe.cruzroja.convocatorias.operations.application.JustificationRepository;
+import pe.cruzroja.convocatorias.operations.application.MonthlyReportRepository;
 import pe.cruzroja.convocatorias.operations.domain.Justification;
 import pe.cruzroja.convocatorias.shared.infrastructure.JdbcSupport;
 
-public class JdbcAttendanceRepository extends JdbcSupport implements AttendanceRepository {
+public class JdbcAttendanceRepository extends JdbcSupport
+        implements AttendanceRecordRepository,
+                AttendanceReviewRepository,
+                JustificationRepository,
+                MonthlyReportRepository,
+                AttendanceDirectoryRepository {
     public JdbcAttendanceRepository(JdbcTemplate db) {
         super(db);
     }

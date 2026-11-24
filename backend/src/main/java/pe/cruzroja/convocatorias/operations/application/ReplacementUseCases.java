@@ -9,14 +9,16 @@ import pe.cruzroja.convocatorias.shared.application.*;
 
 /** Un único cambio transaccional: resolución, relevo de la plaza, permisos y avisos. */
 public class ReplacementUseCases extends UseCaseSupport {
-    private final AttendanceRepository requests;
+    private final JustificationRepository justificationRecords;
+    private final AttendanceDirectoryRepository userDirectory;
     private final EnrollmentRepository enrollments;
     private final CalloutWorkflow workflow;
     private final MonthlyLedger ledger;
     private final ImageInspector images;
 
     public ReplacementUseCases(
-            AttendanceRepository requests,
+            JustificationRepository justificationRecords,
+            AttendanceDirectoryRepository userDirectory,
             EnrollmentRepository enrollments,
             CalloutWorkflow workflow,
             MonthlyLedger ledger,
@@ -24,7 +26,8 @@ public class ReplacementUseCases extends UseCaseSupport {
             ExecutionContext context,
             NotificationPublisher notifications) {
         super(context, notifications);
-        this.requests = requests;
+        this.justificationRecords = justificationRecords;
+        this.userDirectory = userDirectory;
         this.enrollments = enrollments;
         this.workflow = workflow;
         this.ledger = ledger;
@@ -49,59 +52,80 @@ public class ReplacementUseCases extends UseCaseSupport {
         }
     }
 
-    public Map<String, UUID> submit(UUID enrollment, Request r, byte[] bytes) {
+    public Map<String, UUID> submit(UUID enrollmentId, Request request, byte[] evidenceImage) {
         require(!chief(), "Jefatura no ocupa plazas de voluntario.");
-        var initial = enrollments.find(enrollment, false);
-        var c = workflow.locked(id(initial, "callout_id"));
-        var e = enrollments.find(enrollment, true);
+        var initial = enrollments.find(enrollmentId, false);
+        var callout = workflow.locked(id(initial, "callout_id"));
+        var enrollment = enrollments.find(enrollmentId, true);
         require(
-                actor().id().equals(e.get("volunteer_id")),
+                actor().id().equals(enrollment.get("volunteer_id")),
                 "Solo puedes solicitar tu propio reemplazo.");
         valid(
-                "CONFIRMADA".equals(e.get("status"))
-                        && "SERVICIO".equals(c.get("kind"))
-                        && c.get("opened_at") == null
-                        && Set.of("ABIERTA", "CERRADA").contains(c.get("status")),
+                "CONFIRMADA".equals(enrollment.get("status"))
+                        && "SERVICIO".equals(callout.get("kind"))
+                        && isBeforeOperation(callout),
                 "La inscripción no admite una solicitud de reemplazo.");
         ReplacementRequest.submit(
-                r.reason(), r.proposedReplacementName(), time(c, "start_at"), now());
-        ledger.ensureOpen(c);
-        valid(
-                requests.justifications(actor().id()).stream()
-                        .noneMatch(
-                                j ->
-                                        enrollment.equals(j.get("enrollment_id"))
-                                                && "REEMPLAZO".equals(j.get("kind"))
-                                                && "PENDIENTE".equals(j.get("status"))),
-                "Ya tienes una solicitud pendiente para esta inscripción.");
-        var evidence = EvidenceFile.inspect(bytes, images);
-        UUID request = UUID.randomUUID();
-        requests.requestReplacement(
-                request,
-                enrollment,
-                actor().id(),
-                r.reason().trim(),
-                r.proposedReplacementName() == null ? null : r.proposedReplacementName().trim(),
+                request.reason(),
+                request.proposedReplacementName(),
+                time(callout, "start_at"),
                 now());
-        requests.evidence(request, evidence);
-        enrollments.cancellation(enrollment, r.reason(), now());
-        var j = requests.justification(request, false);
-        var recipients = new LinkedHashSet<>(requests.chiefs());
-        if (c.get("responsible_id") != null && !actor().id().equals(c.get("responsible_id")))
-            recipients.add(id(c, "responsible_id"));
-        String link = "/justifications?request=" + request;
+        ledger.ensureOpen(callout);
+        ensureNoPendingReplacement(enrollmentId);
+        var evidence = EvidenceFile.inspect(evidenceImage, images);
+        UUID requestId = UUID.randomUUID();
+        justificationRecords.requestReplacement(
+                requestId,
+                enrollmentId,
+                actor().id(),
+                request.reason().trim(),
+                request.proposedReplacementName() == null
+                        ? null
+                        : request.proposedReplacementName().trim(),
+                now());
+        justificationRecords.evidence(requestId, evidence);
+        enrollments.cancellation(enrollmentId, request.reason(), now());
+        notifyReplacementRequested(requestId, callout, request.proposedReplacementName());
+        return Map.of("id", requestId);
+    }
+
+    /** El servicio sigue abierto o cerrado a inscripciones, pero todavía no se inició. */
+    private static boolean isBeforeOperation(Map<String, Object> callout) {
+        return callout.get("opened_at") == null
+                && Set.of("ABIERTA", "CERRADA").contains(callout.get("status"));
+    }
+
+    private void ensureNoPendingReplacement(UUID enrollmentId) {
+        valid(
+                justificationRecords.justifications(actor().id()).stream()
+                        .noneMatch(
+                                justification ->
+                                        enrollmentId.equals(justification.get("enrollment_id"))
+                                                && "REEMPLAZO".equals(justification.get("kind"))
+                                                && "PENDIENTE".equals(justification.get("status"))),
+                "Ya tienes una solicitud pendiente para esta inscripción.");
+    }
+
+    private void notifyReplacementRequested(
+            UUID requestId, Map<String, Object> callout, String proposedReplacementName) {
+        var justification = justificationRecords.justification(requestId, false);
+        var recipients = new LinkedHashSet<>(userDirectory.chiefs());
+        if (callout.get("responsible_id") != null
+                && !actor().id().equals(callout.get("responsible_id")))
+            recipients.add(id(callout, "responsible_id"));
+        String link = "/justifications?request=" + requestId;
         for (var recipient : recipients)
             notifyUser(
                     recipient,
                     "REEMPLAZO",
-                    j.get("name")
+                    justification.get("name")
                             + " "
-                            + j.get("surnames")
+                            + justification.get("surnames")
                             + " solicita reemplazo en "
-                            + c.get("title")
-                            + (r.proposedReplacementName() == null
+                            + callout.get("title")
+                            + (proposedReplacementName == null
                                     ? ". Solicita que Jefatura busque y asigne a la persona."
-                                    : ". Persona propuesta: " + r.proposedReplacementName())
+                                    : ". Persona propuesta: " + proposedReplacementName)
                             + ". Solo Jefatura puede asignar y resolver.",
                     link);
         notifyUser(
@@ -109,22 +133,21 @@ public class ReplacementUseCases extends UseCaseSupport {
                 "REEMPLAZO",
                 "Solicitud recibida. Conservas tu plaza hasta que Jefatura asigne y apruebe el reemplazo.",
                 link);
-        return Map.of("id", request);
     }
 
-    public Map<String, Object> detail(UUID id) {
-        var j = requests.justification(id, false);
-        if (chief() || actor().id().equals(j.get("volunteer_id"))) {
-            j.put("history", requests.justificationHistory(id));
-            return j;
+    public Map<String, Object> detail(UUID requestId) {
+        var justification = justificationRecords.justification(requestId, false);
+        if (chief() || actor().id().equals(justification.get("volunteer_id"))) {
+            justification.put("history", justificationRecords.justificationHistory(requestId));
+            return justification;
         }
         // Un responsable recibe solo el resumen operativo de una solicitud puntual, nunca el
         // listado ni el sustento privado.
-        var c = workflow.locked(id(j, "callout_id"));
+        var callout = workflow.locked(id(justification, "callout_id"));
         require(
-                "REEMPLAZO".equals(j.get("kind"))
-                        && actor().id().equals(c.get("responsible_id"))
-                        && workflow.canOperate(c),
+                "REEMPLAZO".equals(justification.get("kind"))
+                        && actor().id().equals(callout.get("responsible_id"))
+                        && workflow.canOperate(callout),
                 "No puedes consultar esta justificación.");
         var summary = new LinkedHashMap<String, Object>();
         for (String key :
@@ -139,133 +162,170 @@ public class ReplacementUseCases extends UseCaseSupport {
                         "status",
                         "proposed_replacement_name",
                         "assigned_replacement_name",
-                        "submitted_at")) summary.put(key, j.get(key));
+                        "submitted_at")) summary.put(key, justification.get(key));
         summary.put("operational_only", true);
         return summary;
     }
 
-    public EvidenceFile evidence(UUID id) {
-        var j = requests.justification(id, false);
+    public EvidenceFile evidence(UUID requestId) {
+        var justification = justificationRecords.justification(requestId, false);
         require(
-                chief() || actor().id().equals(j.get("volunteer_id")),
+                chief() || actor().id().equals(justification.get("volunteer_id")),
                 "La evidencia es privada: solo el solicitante y Jefatura pueden verla.");
-        return requests.evidence(id);
+        return justificationRecords.evidence(requestId);
     }
 
-    public List<Map<String, Object>> candidates(UUID id) {
+    public List<Map<String, Object>> candidates(UUID requestId) {
         require(chief(), "Solo Jefatura puede consultar y asignar reemplazos.");
-        var j = requests.justification(id, false);
-        valid("REEMPLAZO".equals(j.get("kind")), "Esta justificación no solicita un reemplazo.");
-        var e = enrollments.find(id(j, "enrollment_id"), false);
-        var c = workflow.locked(id(j, "callout_id"));
-        if (!"PENDIENTE".equals(j.get("status"))
-                || !"CONFIRMADA".equals(e.get("status"))
-                || c.get("opened_at") != null
-                || !time(c, "start_at").isAfter(now())
-                || !Set.of("ABIERTA", "CERRADA").contains(c.get("status"))) return List.of();
-        return enrollments.candidates(id(c, "id")).stream()
+        var justification = justificationRecords.justification(requestId, false);
+        valid(
+                "REEMPLAZO".equals(justification.get("kind")),
+                "Esta justificación no solicita un reemplazo.");
+        var enrollment = enrollments.find(id(justification, "enrollment_id"), false);
+        var callout = workflow.locked(id(justification, "callout_id"));
+        if (!acceptsReplacement(justification, enrollment, callout)) return List.of();
+        return enrollments.candidates(id(callout, "id")).stream()
                 .filter(
-                        u ->
-                                !u.get("id").equals(e.get("volunteer_id"))
-                                        && compatible(c, e, id(u, "id")))
+                        user ->
+                                !user.get("id").equals(enrollment.get("volunteer_id"))
+                                        && compatible(callout, enrollment, id(user, "id")))
                 .toList();
     }
 
-    private boolean compatible(Map<String, Object> c, Map<String, Object> e, UUID user) {
-        return workflow.qualified(c, user, text(e, "position"))
-                && !workflow.overlap(c, user)
-                && workflow.canAdmit(c, user, text(e, "position"), id(e, "volunteer_id"));
+    private boolean acceptsReplacement(
+            Map<String, Object> justification,
+            Map<String, Object> enrollment,
+            Map<String, Object> callout) {
+        return "PENDIENTE".equals(justification.get("status"))
+                && "CONFIRMADA".equals(enrollment.get("status"))
+                && callout.get("opened_at") == null
+                && time(callout, "start_at").isAfter(now())
+                && Set.of("ABIERTA", "CERRADA").contains(callout.get("status"));
     }
 
-    public void resolve(UUID id, Resolution r) {
+    private boolean compatible(
+            Map<String, Object> callout, Map<String, Object> enrollment, UUID user) {
+        String position = text(enrollment, "position");
+        return workflow.qualified(callout, user, position)
+                && !workflow.overlap(callout, user)
+                && workflow.canAdmit(callout, user, position, id(enrollment, "volunteer_id"));
+    }
+
+    public void resolve(UUID requestId, Resolution resolution) {
         require(chief(), "Solo Jefatura asigna reemplazos y resuelve justificaciones.");
-        var initial = requests.justification(id, false);
-        var c = workflow.locked(id(initial, "callout_id"));
-        var j = requests.justification(id, true);
+        var initial = justificationRecords.justification(requestId, false);
+        var callout = workflow.locked(id(initial, "callout_id"));
+        var justification = justificationRecords.justification(requestId, true);
         valid(
-                "REEMPLAZO".equals(j.get("kind")) && "PENDIENTE".equals(j.get("status")),
+                "REEMPLAZO".equals(justification.get("kind"))
+                        && "PENDIENTE".equals(justification.get("status")),
                 "La solicitud de reemplazo ya fue resuelta o no corresponde a este trámite.");
-        var e = enrollments.find(id(j, "enrollment_id"), true);
-        UUID selected = r.replacementUserId();
-        if (r.approved()) {
-            ReplacementRequest.approve(
-                    id(e, "volunteer_id"),
-                    selected,
-                    r.requirementsVerified(),
-                    time(c, "start_at"),
-                    now());
-            ledger.ensureOpen(c);
-            valid(
-                    "CONFIRMADA".equals(e.get("status"))
-                            && c.get("opened_at") == null
-                            && Set.of("ABIERTA", "CERRADA").contains(c.get("status")),
-                    "El servicio o la inscripción ya no admiten el reemplazo.");
-            enrollments.lockVolunteer(selected);
-            valid(
-                    compatible(c, e, selected),
-                    "El reemplazo no cumple la graduación, habilitaciones, cupos reservados o disponibilidad horaria.");
-            var own = enrollments.byUser(id(c, "id"), selected, true);
-            valid(
-                    own.isEmpty()
-                            || Set.of("PENDIENTE", "EXPIRADA").contains(own.get(0).get("status")),
-                    "La persona ya tiene una inscripción o resolución en este servicio.");
-            valid(
-                    enrollments.pendingReplacements(id(e, "id")) == 0,
-                    "Hay un reemplazo histórico pendiente: resuélvelo primero.");
-            // El bloqueo de convocatoria protege la plaza durante todo el cambio, incluso al
-            // relevar al responsable.
-            enrollments.cancelReplaced(id(e, "id"));
-            enrollments.save(
-                    own.isEmpty() ? null : id(own.get(0), "id"),
-                    selected,
-                    id(c, "id"),
-                    text(e, "position"),
-                    id(e, "id"),
-                    actor().id(),
-                    now());
-            var replacement = enrollments.byUser(id(c, "id"), selected, true).get(0);
-            enrollments.review(id(replacement, "id"), true, r.comment(), now());
-            requests.assignedReplacement(id, selected);
-            workflow.assignResponsible(c);
-            workflow.synchronize(c);
-            notifyUser(
-                    selected,
-                    "REEMPLAZO",
-                    "Jefatura te asignó como reemplazo de "
-                            + j.get("name")
-                            + " "
-                            + j.get("surnames")
-                            + " en "
-                            + c.get("title")
-                            + ". Puesto: "
-                            + e.get("position"),
-                    "/callouts/" + c.get("id"));
-        } else enrollments.clearCancellation(id(e, "id"));
-        requests.decision(
-                new Justification(id, text(j, "status"))
-                        .resolve(r.approved(), r.comment(), actor().id(), now(), 0, 0));
-        String link = "/justifications?request=" + id;
+        var enrollment = enrollments.find(id(justification, "enrollment_id"), true);
+        if (resolution.approved())
+            assignReplacement(requestId, resolution, callout, enrollment, justification);
+        else enrollments.clearCancellation(id(enrollment, "id"));
+        justificationRecords.decision(
+                new Justification(requestId, text(justification, "status"))
+                        .resolve(
+                                resolution.approved(),
+                                resolution.comment(),
+                                actor().id(),
+                                now(),
+                                0,
+                                0));
+        notifyResolution(requestId, resolution, callout, justification);
+    }
+
+    private void assignReplacement(
+            UUID requestId,
+            Resolution resolution,
+            Map<String, Object> callout,
+            Map<String, Object> enrollment,
+            Map<String, Object> justification) {
+        UUID selected = resolution.replacementUserId();
+        ReplacementRequest.approve(
+                id(enrollment, "volunteer_id"),
+                selected,
+                resolution.requirementsVerified(),
+                time(callout, "start_at"),
+                now());
+        ledger.ensureOpen(callout);
+        valid(
+                "CONFIRMADA".equals(enrollment.get("status")) && isBeforeOperation(callout),
+                "El servicio o la inscripción ya no admiten el reemplazo.");
+        enrollments.lockVolunteer(selected);
+        valid(
+                compatible(callout, enrollment, selected),
+                "El reemplazo no cumple la graduación, habilitaciones, cupos reservados o disponibilidad horaria.");
+        var existingEnrollments = enrollments.byUser(id(callout, "id"), selected, true);
+        valid(
+                existingEnrollments.isEmpty()
+                        || Set.of("PENDIENTE", "EXPIRADA")
+                                .contains(existingEnrollments.get(0).get("status")),
+                "La persona ya tiene una inscripción o resolución en este servicio.");
+        valid(
+                enrollments.pendingReplacements(id(enrollment, "id")) == 0,
+                "Hay un reemplazo histórico pendiente: resuélvelo primero.");
+        // El bloqueo de convocatoria protege la plaza durante todo el cambio, incluso al
+        // relevar al responsable.
+        enrollments.cancelReplaced(id(enrollment, "id"));
+        enrollments.save(
+                existingEnrollments.isEmpty() ? null : id(existingEnrollments.get(0), "id"),
+                selected,
+                id(callout, "id"),
+                text(enrollment, "position"),
+                id(enrollment, "id"),
+                actor().id(),
+                now());
+        var replacementEnrollment = enrollments.byUser(id(callout, "id"), selected, true).get(0);
+        enrollments.review(id(replacementEnrollment, "id"), true, resolution.comment(), now());
+        justificationRecords.assignedReplacement(requestId, selected);
+        workflow.assignResponsible(callout);
+        workflow.synchronize(callout);
         notifyUser(
-                id(j, "volunteer_id"),
+                selected,
+                "REEMPLAZO",
+                "Jefatura te asignó como reemplazo de "
+                        + justification.get("name")
+                        + " "
+                        + justification.get("surnames")
+                        + " en "
+                        + callout.get("title")
+                        + ". Puesto: "
+                        + enrollment.get("position"),
+                "/callouts/" + callout.get("id"));
+    }
+
+    private void notifyResolution(
+            UUID requestId,
+            Resolution resolution,
+            Map<String, Object> callout,
+            Map<String, Object> justification) {
+        String link = "/justifications?request=" + requestId;
+        notifyUser(
+                id(justification, "volunteer_id"),
                 "REEMPLAZO",
                 "Solicitud de reemplazo "
-                        + (r.approved()
+                        + (resolution.approved()
                                 ? "aprobada; se canceló tu inscripción sin generar inasistencia"
                                 : "rechazada; sigues inscrito")
                         + ". "
-                        + r.comment(),
+                        + resolution.comment(),
                 link);
-        if (c.get("responsible_id") != null
-                && !Objects.equals(c.get("responsible_id"), j.get("volunteer_id")))
+        boolean responsibleIsAnotherPerson =
+                callout.get("responsible_id") != null
+                        && !Objects.equals(
+                                callout.get("responsible_id"), justification.get("volunteer_id"));
+        if (responsibleIsAnotherPerson)
             notifyUser(
-                    id(c, "responsible_id"),
+                    id(callout, "responsible_id"),
                     "REEMPLAZO",
                     "Solicitud de "
-                            + j.get("name")
+                            + justification.get("name")
                             + " "
-                            + j.get("surnames")
+                            + justification.get("surnames")
                             + ": "
-                            + (r.approved() ? "APROBADA" : "RECHAZADA"),
+                            + (resolution.approved() ? "APROBADA" : "RECHAZADA"),
                     link);
     }
 }
