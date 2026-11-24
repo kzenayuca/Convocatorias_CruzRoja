@@ -78,12 +78,12 @@ class ReplacementUseCasesTest {
         request.put("kind", "REEMPLAZO");
         request.put("status", "PENDIENTE");
 
-        when(enrollments.find(enrollmentId, false)).thenReturn(enrollment);
-        when(enrollments.find(enrollmentId, true)).thenReturn(enrollment);
+        when(enrollments.find(enrollmentId)).thenReturn(enrollment);
+        when(enrollments.findForUpdate(enrollmentId)).thenReturn(enrollment);
         when(workflow.locked(calloutId)).thenReturn(callout);
         when(userDirectory.chiefs()).thenReturn(List.of(chief));
-        when(justificationRecords.justification(any(UUID.class), eq(false))).thenReturn(request);
-        when(justificationRecords.justification(any(UUID.class), eq(true))).thenReturn(request);
+        when(justificationRecords.justification(any(UUID.class))).thenReturn(request);
+        when(justificationRecords.justificationForUpdate(any(UUID.class))).thenReturn(request);
 
         useCases =
                 new ReplacementUseCases(

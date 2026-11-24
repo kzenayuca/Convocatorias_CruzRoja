@@ -92,11 +92,15 @@ public class JpaMaterialRepository implements MaterialRepository {
     }
 
     @Override
-    public Map<String, Object> find(UUID id, boolean lock) {
-        var entity =
-                lock
-                        ? entities.lock(MaterialRequestEntity.class, id)
-                        : persistence.find(MaterialRequestEntity.class, id);
+    public Map<String, Object> find(UUID id) {
+        var entity = persistence.find(MaterialRequestEntity.class, id);
+        if (entity == null) throw new NotFound();
+        return entity.projection();
+    }
+
+    @Override
+    public Map<String, Object> findForUpdate(UUID id) {
+        var entity = entities.lock(MaterialRequestEntity.class, id);
         if (entity == null) throw new NotFound();
         return entity.projection();
     }

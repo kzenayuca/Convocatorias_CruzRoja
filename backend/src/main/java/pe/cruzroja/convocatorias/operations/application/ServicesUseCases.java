@@ -197,7 +197,7 @@ public class ServicesUseCases extends UseCaseSupport {
     public Map<String, Object> detail(UUID id) {
         maintenance.refresh();
         var c = repository.view(id);
-        boolean own = !enrollments.byUser(id, actor().id(), false).isEmpty();
+        boolean own = !enrollments.byUser(id, actor().id()).isEmpty();
         require(
                 workflow.canEdit(c)
                         || own
@@ -353,16 +353,16 @@ public class ServicesUseCases extends UseCaseSupport {
 
     public List<Map<String, Object>> applicants(UUID id) {
         maintenance.refresh();
-        workflow.teamPermission(repository.snapshot(id, false));
+        workflow.teamPermission(repository.snapshot(id));
         var rows = enrollments.applicants(id);
         if (!chief()) for (var row : rows) row.remove("cancellation_reason");
         return rows;
     }
 
     public void review(UUID id, Review r) {
-        var initial = enrollments.find(id, false);
+        var initial = enrollments.find(id);
         var c = workflow.locked(id(initial, "callout_id"));
-        var e = enrollments.find(id, true);
+        var e = enrollments.findForUpdate(id);
         valid(
                 time(c, "start_at").isAfter(now())
                         && Set.of("ABIERTA", "CERRADA").contains(c.get("status")),
@@ -370,7 +370,7 @@ public class ServicesUseCases extends UseCaseSupport {
         if (text(e, "status").equals("PENDIENTE_REEMPLAZO")) {
             require(chief(), "Solo Jefatura puede resolver un reemplazo.");
             if (r.approved()) {
-                var target = enrollments.find(id(e, "replacement_for"), true);
+                var target = enrollments.findForUpdate(id(e, "replacement_for"));
                 valid(
                         text(target, "status").equals("CONFIRMADA")
                                 && target.get("cancellation_requested_at") != null,

@@ -102,7 +102,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     public List<Map<String, Object>> team(UUID calloutId) {
-        services.operationPermission(callouts.snapshot(calloutId, false));
+        services.operationPermission(callouts.snapshot(calloutId));
         maintenance.refresh();
         return records(null, calloutId);
     }
@@ -111,7 +111,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
         var enrollment = ownEnrollment(enrollmentId, "Solo puedes marcar tu asistencia.");
         var callout = services.locked(id(enrollment, "callout_id"));
         ledger.ensureOpen(callout);
-        enrollment = enrollments.find(enrollmentId, false);
+        enrollment = enrollments.find(enrollmentId);
         ensureConfirmedService(
                 enrollment, callout, "Necesitas una inscripción confirmada de servicio.");
         ensureServiceInProgress(callout);
@@ -129,7 +129,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     private Map<String, Object> ownEnrollment(UUID enrollmentId, String deniedMessage) {
-        var enrollment = enrollments.find(enrollmentId, false);
+        var enrollment = enrollments.find(enrollmentId);
         require(actor().id().equals(enrollment.get("volunteer_id")), deniedMessage);
         return enrollment;
     }
@@ -178,7 +178,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     public void confirm(UUID attendanceId, Confirmation request) {
-        var attendance = attendanceRecords.find(attendanceId, false);
+        var attendance = attendanceRecords.find(attendanceId);
         var callout = services.locked(id(attendance, "callout_id"));
         services.operationPermission(callout);
         ledger.ensureOpen(callout);
@@ -281,17 +281,17 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     public Map<String, Object> reviewRequest(UUID reviewId) {
-        var review = attendanceReviews.review(reviewId, false);
+        var review = attendanceReviews.review(reviewId);
         if (!chief() && !actor().id().equals(review.get("volunteer_id")))
-            services.operationPermission(callouts.snapshot(id(review, "callout_id"), false));
+            services.operationPermission(callouts.snapshot(id(review, "callout_id")));
         return review;
     }
 
     public void rejectReview(UUID reviewId, Resolution resolution) {
-        var initial = attendanceReviews.review(reviewId, false);
+        var initial = attendanceReviews.review(reviewId);
         var callout = services.locked(id(initial, "callout_id"));
         services.operationPermission(callout);
-        var review = attendanceReviews.review(reviewId, true);
+        var review = attendanceReviews.reviewForUpdate(reviewId);
         valid(
                 !resolution.approved(),
                 "Para aprobar confirma primero las marcas y horas de la asistencia.");
@@ -311,9 +311,9 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
 
     public void justify(UUID attendanceId, Reason request, byte[] evidenceImage) {
         require(!chief(), "Jefatura no está sujeta a penalizaciones ni necesita justificarse.");
-        var initial = attendanceRecords.find(attendanceId, false);
+        var initial = attendanceRecords.find(attendanceId);
         var callout = services.locked(id(initial, "callout_id"));
-        var attendance = attendanceRecords.find(attendanceId, true);
+        var attendance = attendanceRecords.findForUpdate(attendanceId);
         require(
                 actor().id().equals(attendance.get("volunteer_id")),
                 "Solo puedes justificar tu asistencia.");
@@ -357,7 +357,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     private void notifyChiefsOfJustification(UUID justificationId, Map<String, Object> callout) {
-        var justification = justificationRecords.justification(justificationId, false);
+        var justification = justificationRecords.justification(justificationId);
         for (var chiefId : userDirectory.chiefs())
             notifyUser(
                     chiefId,
@@ -385,12 +385,12 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
 
     public void resolve(UUID justificationId, Resolution resolution) {
         require(chief(), "Solo jefatura resuelve justificaciones.");
-        var initial = justificationRecords.justification(justificationId, false);
+        var initial = justificationRecords.justification(justificationId);
         valid(
                 !"REEMPLAZO".equals(initial.get("kind")),
                 "Asigna el reemplazo desde la solicitud antes de aprobarla.");
         var callout = services.locked(id(initial, "callout_id"));
-        var justification = justificationRecords.justification(justificationId, true);
+        var justification = justificationRecords.justificationForUpdate(justificationId);
         var attendance = justificationRecords.justificationAttendance(justificationId);
         double deductionBefore = rounded(deduction(attendance));
         attendance.put("justification_status", resolution.approved() ? "APROBADA" : "RECHAZADA");

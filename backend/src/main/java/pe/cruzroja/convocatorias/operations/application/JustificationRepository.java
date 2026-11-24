@@ -22,7 +22,9 @@ public interface JustificationRepository {
 
     List<Map<String, Object>> justificationHistory(UUID id);
 
-    Map<String, Object> justification(UUID id, boolean lock);
+    Map<String, Object> justification(UUID id);
+
+    Map<String, Object> justificationForUpdate(UUID id);
 
     Map<String, Object> justificationAttendance(UUID id);
 

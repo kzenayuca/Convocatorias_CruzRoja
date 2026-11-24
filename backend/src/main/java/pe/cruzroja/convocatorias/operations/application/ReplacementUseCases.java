@@ -54,9 +54,9 @@ public class ReplacementUseCases extends UseCaseSupport {
 
     public Map<String, UUID> submit(UUID enrollmentId, Request request, byte[] evidenceImage) {
         require(!chief(), "Jefatura no ocupa plazas de voluntario.");
-        var initial = enrollments.find(enrollmentId, false);
+        var initial = enrollments.find(enrollmentId);
         var callout = workflow.locked(id(initial, "callout_id"));
-        var enrollment = enrollments.find(enrollmentId, true);
+        var enrollment = enrollments.findForUpdate(enrollmentId);
         require(
                 actor().id().equals(enrollment.get("volunteer_id")),
                 "Solo puedes solicitar tu propio reemplazo.");
@@ -108,7 +108,7 @@ public class ReplacementUseCases extends UseCaseSupport {
 
     private void notifyReplacementRequested(
             UUID requestId, Map<String, Object> callout, String proposedReplacementName) {
-        var justification = justificationRecords.justification(requestId, false);
+        var justification = justificationRecords.justification(requestId);
         var recipients = new LinkedHashSet<>(userDirectory.chiefs());
         if (callout.get("responsible_id") != null
                 && !actor().id().equals(callout.get("responsible_id")))
@@ -136,7 +136,7 @@ public class ReplacementUseCases extends UseCaseSupport {
     }
 
     public Map<String, Object> detail(UUID requestId) {
-        var justification = justificationRecords.justification(requestId, false);
+        var justification = justificationRecords.justification(requestId);
         if (chief() || actor().id().equals(justification.get("volunteer_id"))) {
             justification.put("history", justificationRecords.justificationHistory(requestId));
             return justification;
@@ -168,7 +168,7 @@ public class ReplacementUseCases extends UseCaseSupport {
     }
 
     public EvidenceFile evidence(UUID requestId) {
-        var justification = justificationRecords.justification(requestId, false);
+        var justification = justificationRecords.justification(requestId);
         require(
                 chief() || actor().id().equals(justification.get("volunteer_id")),
                 "La evidencia es privada: solo el solicitante y Jefatura pueden verla.");
@@ -177,11 +177,11 @@ public class ReplacementUseCases extends UseCaseSupport {
 
     public List<Map<String, Object>> candidates(UUID requestId) {
         require(chief(), "Solo Jefatura puede consultar y asignar reemplazos.");
-        var justification = justificationRecords.justification(requestId, false);
+        var justification = justificationRecords.justification(requestId);
         valid(
                 "REEMPLAZO".equals(justification.get("kind")),
                 "Esta justificación no solicita un reemplazo.");
-        var enrollment = enrollments.find(id(justification, "enrollment_id"), false);
+        var enrollment = enrollments.find(id(justification, "enrollment_id"));
         var callout = workflow.locked(id(justification, "callout_id"));
         if (!acceptsReplacement(justification, enrollment, callout)) return List.of();
         return enrollments.candidates(id(callout, "id")).stream()
@@ -213,14 +213,14 @@ public class ReplacementUseCases extends UseCaseSupport {
 
     public void resolve(UUID requestId, Resolution resolution) {
         require(chief(), "Solo Jefatura asigna reemplazos y resuelve justificaciones.");
-        var initial = justificationRecords.justification(requestId, false);
+        var initial = justificationRecords.justification(requestId);
         var callout = workflow.locked(id(initial, "callout_id"));
-        var justification = justificationRecords.justification(requestId, true);
+        var justification = justificationRecords.justificationForUpdate(requestId);
         valid(
                 "REEMPLAZO".equals(justification.get("kind"))
                         && "PENDIENTE".equals(justification.get("status")),
                 "La solicitud de reemplazo ya fue resuelta o no corresponde a este trámite.");
-        var enrollment = enrollments.find(id(justification, "enrollment_id"), true);
+        var enrollment = enrollments.findForUpdate(id(justification, "enrollment_id"));
         if (resolution.approved())
             assignReplacement(requestId, resolution, callout, enrollment, justification);
         else enrollments.clearCancellation(id(enrollment, "id"));
@@ -257,7 +257,7 @@ public class ReplacementUseCases extends UseCaseSupport {
         valid(
                 compatible(callout, enrollment, selected),
                 "El reemplazo no cumple la graduación, habilitaciones, cupos reservados o disponibilidad horaria.");
-        var existingEnrollments = enrollments.byUser(id(callout, "id"), selected, true);
+        var existingEnrollments = enrollments.byUserForUpdate(id(callout, "id"), selected);
         valid(
                 existingEnrollments.isEmpty()
                         || Set.of("PENDIENTE", "EXPIRADA")
@@ -277,7 +277,7 @@ public class ReplacementUseCases extends UseCaseSupport {
                 id(enrollment, "id"),
                 actor().id(),
                 now());
-        var replacementEnrollment = enrollments.byUser(id(callout, "id"), selected, true).get(0);
+        var replacementEnrollment = enrollments.byUserForUpdate(id(callout, "id"), selected).get(0);
         enrollments.review(id(replacementEnrollment, "id"), true, resolution.comment(), now());
         justificationRecords.assignedReplacement(requestId, selected);
         workflow.assignResponsible(callout);

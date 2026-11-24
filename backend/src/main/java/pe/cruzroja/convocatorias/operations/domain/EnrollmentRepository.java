@@ -4,9 +4,13 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 public interface EnrollmentRepository {
-    Map<String, Object> find(UUID id, boolean lock);
+    Map<String, Object> find(UUID id);
 
-    List<Map<String, Object>> byUser(UUID callout, UUID user, boolean lock);
+    Map<String, Object> findForUpdate(UUID id);
+
+    List<Map<String, Object>> byUser(UUID callout, UUID user);
+
+    List<Map<String, Object>> byUserForUpdate(UUID callout, UUID user);
 
     void lockVolunteer(UUID user);
 

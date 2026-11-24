@@ -23,9 +23,12 @@ public class JdbcCalloutRepository extends JdbcSupport implements CalloutReposit
         FROM callouts c LEFT JOIN users u ON u.id=c.responsible_id
         """;
 
-    public Map<String, Object> snapshot(UUID id, boolean lock) {
-        return row(
-                "SELECT " + FIELDS + " FROM callouts WHERE id=?" + (lock ? " FOR UPDATE" : ""), id);
+    public Map<String, Object> snapshot(UUID id) {
+        return row("SELECT " + FIELDS + " FROM callouts WHERE id=?", id);
+    }
+
+    public Map<String, Object> snapshotForUpdate(UUID id) {
+        return row("SELECT " + FIELDS + " FROM callouts WHERE id=? FOR UPDATE", id);
     }
 
     public Map<String, Object> view(UUID id) {

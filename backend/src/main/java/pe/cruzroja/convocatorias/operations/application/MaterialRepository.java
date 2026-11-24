@@ -12,7 +12,9 @@ public interface MaterialRepository {
 
     void request(UUID callout, UUID actor, MaterialsUseCases.Material request, String name);
 
-    Map<String, Object> find(UUID id, boolean lock);
+    Map<String, Object> find(UUID id);
+
+    Map<String, Object> findForUpdate(UUID id);
 
     void handover(
             UUID id,

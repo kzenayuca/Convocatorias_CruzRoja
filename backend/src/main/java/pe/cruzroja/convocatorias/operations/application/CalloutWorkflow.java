@@ -24,7 +24,7 @@ public class CalloutWorkflow extends UseCaseSupport implements ServiceParticipat
     }
 
     public Map<String, Object> locked(UUID id) {
-        return repository.snapshot(id, true);
+        return repository.snapshotForUpdate(id);
     }
 
     public Callout model(Map<String, Object> c) {

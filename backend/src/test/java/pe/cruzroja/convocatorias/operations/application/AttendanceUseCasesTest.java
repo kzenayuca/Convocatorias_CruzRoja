@@ -72,7 +72,7 @@ class AttendanceUseCasesTest {
         attendance = new HashMap<>();
         attendance.put("id", attendanceId);
 
-        when(enrollments.find(enrollmentId, false)).thenReturn(enrollment);
+        when(enrollments.find(enrollmentId)).thenReturn(enrollment);
         when(workflow.locked(calloutId)).thenReturn(callout);
         when(attendanceRecords.byEnrollment(enrollmentId)).thenReturn(attendance);
         when(userDirectory.chiefs()).thenReturn(List.of(chief));
@@ -305,8 +305,8 @@ class AttendanceUseCasesTest {
         review.put("callout_id", calloutId);
         review.put("volunteer_id", volunteer);
         review.put("status", "PENDIENTE");
-        when(attendanceReviews.review(reviewId, false)).thenReturn(review);
-        when(attendanceReviews.review(reviewId, true)).thenReturn(review);
+        when(attendanceReviews.review(reviewId)).thenReturn(review);
+        when(attendanceReviews.reviewForUpdate(reviewId)).thenReturn(review);
         return reviewId;
     }
 }

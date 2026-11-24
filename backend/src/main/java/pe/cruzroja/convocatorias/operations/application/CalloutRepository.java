@@ -5,7 +5,9 @@ import java.util.*;
 import pe.cruzroja.convocatorias.operations.domain.*;
 
 public interface CalloutRepository {
-    Map<String, Object> snapshot(UUID id, boolean lock);
+    Map<String, Object> snapshot(UUID id);
+
+    Map<String, Object> snapshotForUpdate(UUID id);
 
     Map<String, Object> view(UUID id);
 

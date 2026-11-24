@@ -45,7 +45,7 @@ public class CalloutPresentation extends UseCaseSupport {
                                                 && workflow.qualified(
                                                         callout, actor().id(), position))
                         .toList());
-        var own = enrollments.byUser(id(callout, "id"), actor().id(), false);
+        var own = enrollments.byUser(id(callout, "id"), actor().id());
         callout.put(
                 "my_enrollment",
                 own.isEmpty()

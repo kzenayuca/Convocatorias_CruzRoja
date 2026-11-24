@@ -9,7 +9,9 @@ import java.util.UUID;
 public interface AttendanceRecordRepository {
     List<Map<String, Object>> records(UUID user, UUID callout);
 
-    Map<String, Object> find(UUID id, boolean lock);
+    Map<String, Object> find(UUID id);
+
+    Map<String, Object> findForUpdate(UUID id);
 
     Map<String, Object> byEnrollment(UUID id);
 

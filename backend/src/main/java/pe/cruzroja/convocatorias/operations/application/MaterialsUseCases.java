@@ -45,7 +45,7 @@ public class MaterialsUseCases extends UseCaseSupport {
     }
 
     public List<Map<String, Object>> list(UUID id) {
-        workflow.operationPermission(callouts.snapshot(id, false));
+        workflow.operationPermission(callouts.snapshot(id));
         return repository.list(id);
     }
 
@@ -63,10 +63,10 @@ public class MaterialsUseCases extends UseCaseSupport {
     }
 
     public void handover(UUID id, Handover r) {
-        var initial = repository.find(id, false);
+        var initial = repository.find(id);
         var c = workflow.locked(id(initial, "callout_id"));
         workflow.operationPermission(c);
-        var m = repository.find(id, true);
+        var m = repository.findForUpdate(id);
         new MaterialRequest(
                         id,
                         ((Number) m.get("quantity")).intValue(),

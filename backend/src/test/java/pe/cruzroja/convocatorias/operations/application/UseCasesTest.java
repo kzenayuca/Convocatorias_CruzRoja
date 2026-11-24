@@ -188,8 +188,8 @@ class UseCasesTest {
                         user,
                         "status",
                         "PENDIENTE");
-        when(justifications.justification(justification, false)).thenReturn(j);
-        when(justifications.justification(justification, true)).thenReturn(j);
+        when(justifications.justification(justification)).thenReturn(j);
+        when(justifications.justificationForUpdate(justification)).thenReturn(j);
         var c = Map.<String, Object>of("id", callout, "start_at", start);
         when(workflow.locked(callout)).thenReturn(c);
         when(ledger.closed(c)).thenReturn(true);

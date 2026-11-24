@@ -11,16 +11,24 @@ public class JdbcEnrollmentRepository extends JdbcSupport implements EnrollmentR
         super(db);
     }
 
-    public Map<String, Object> find(UUID id, boolean lock) {
-        return row("SELECT * FROM enrollments WHERE id=?" + (lock ? " FOR UPDATE" : ""), id);
+    private static final String BY_ID = "SELECT * FROM enrollments WHERE id=?";
+    private static final String BY_USER =
+            "SELECT * FROM enrollments WHERE callout_id=? AND volunteer_id=?";
+
+    public Map<String, Object> find(UUID id) {
+        return row(BY_ID, id);
     }
 
-    public List<Map<String, Object>> byUser(UUID callout, UUID user, boolean lock) {
-        return rows(
-                "SELECT * FROM enrollments WHERE callout_id=? AND volunteer_id=?"
-                        + (lock ? " FOR UPDATE" : ""),
-                callout,
-                user);
+    public Map<String, Object> findForUpdate(UUID id) {
+        return row(BY_ID + " FOR UPDATE", id);
+    }
+
+    public List<Map<String, Object>> byUser(UUID callout, UUID user) {
+        return rows(BY_USER, callout, user);
+    }
+
+    public List<Map<String, Object>> byUserForUpdate(UUID callout, UUID user) {
+        return rows(BY_USER + " FOR UPDATE", callout, user);
     }
 
     public void lockVolunteer(UUID user) {

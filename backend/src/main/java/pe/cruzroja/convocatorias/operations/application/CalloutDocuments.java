@@ -74,7 +74,7 @@ public class CalloutDocuments extends UseCaseSupport {
                             + workflow.total(callout)
                             + " | Mínimo de graduados dentro del total: "
                             + callout.get("graduate_slots"));
-            workflow.teamPermission(repository.snapshot(id(callout, "id"), false));
+            workflow.teamPermission(repository.snapshot(id(callout, "id")));
             for (var enrollment : enrollments.applicants(id(callout, "id"))) {
                 lines.add(
                         enrollment.get("position")

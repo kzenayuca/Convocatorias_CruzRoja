@@ -45,7 +45,7 @@ class JpaPersistenceTest {
         UUID id = draft();
 
         assertNotNull(entities.find(CalloutEntity.class, id));
-        assertEquals("BORRADOR", callouts.snapshot(id, false).get("status"));
+        assertEquals("BORRADOR", callouts.snapshot(id).get("status"));
         callouts.status(id, "ABIERTA");
         assertEquals(
                 "ABIERTA",
@@ -70,14 +70,14 @@ class JpaPersistenceTest {
     void enrollmentRoundTripsThroughHibernateAndCannotBeSilentlyReactivated() {
         UUID callout = draft();
         enrollments.save(null, VOLUNTEER, callout, "SOCORRISTA", null, null, START.minusDays(1));
-        UUID id = (UUID) enrollments.byUser(callout, VOLUNTEER, false).get(0).get("id");
+        UUID id = (UUID) enrollments.byUser(callout, VOLUNTEER).get(0).get("id");
         entities.clear();
 
         assertEquals(
                 EnrollmentStatus.CONFIRMADA,
                 entities.find(EnrollmentEntity.class, id).toDomain().status());
         enrollments.cancelReplaced(id);
-        assertEquals("CANCELADA", enrollments.find(id, false).get("status"));
+        assertEquals("CANCELADA", enrollments.find(id).get("status"));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> enrollments.save(id, VOLUNTEER, callout, "SOCORRISTA", null, null, START));

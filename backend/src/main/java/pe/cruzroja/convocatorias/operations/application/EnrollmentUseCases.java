@@ -54,7 +54,7 @@ public class EnrollmentUseCases extends UseCaseSupport {
         valid(
                 Set.of("SOCORRISTA", "GRADUADO", "RADIOPERADOR", "PILOTO").contains(position),
                 "Puesto no válido para inscripción directa.");
-        var callout = callouts.snapshot(id, false);
+        var callout = callouts.snapshot(id);
         if (!Set.of("ABIERTA", "CERRADA").contains(callout.get("status"))
                 || callout.get("opened_at") != null
                 || !time(callout, "start_at").isAfter(now())
@@ -83,7 +83,7 @@ public class EnrollmentUseCases extends UseCaseSupport {
                 "Se requiere cuenta activa, condición/habilitación e inscripción anual del año del servicio.");
         valid(!workflow.overlap(callout, user), "La persona tiene otro servicio en ese horario.");
 
-        var previous = enrollments.byUser(id, user, true);
+        var previous = enrollments.byUserForUpdate(id, user);
         if (!previous.isEmpty()) {
             commitment(previous.get(0)).requireNewRequest();
         }
@@ -100,7 +100,7 @@ public class EnrollmentUseCases extends UseCaseSupport {
                 now());
         workflow.assignResponsible(callout);
         workflow.synchronize(callout);
-        var saved = enrollments.byUser(id, user, false).get(0);
+        var saved = enrollments.byUser(id, user).get(0);
         notifyUser(
                 user,
                 "INSCRIPCION",

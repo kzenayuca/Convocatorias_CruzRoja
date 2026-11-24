@@ -12,7 +12,9 @@ public interface AttendanceReviewRepository {
 
     List<Map<String, Object>> reviews(UUID attendance);
 
-    Map<String, Object> review(UUID request, boolean lock);
+    Map<String, Object> review(UUID request);
+
+    Map<String, Object> reviewForUpdate(UUID request);
 
     void resolveReview(AttendanceReview.Decision decision);
 }

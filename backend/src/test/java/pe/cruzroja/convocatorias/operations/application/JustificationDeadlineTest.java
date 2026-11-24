@@ -40,11 +40,11 @@ class JustificationDeadlineTest {
                                         "policy_version",
                                         2));
                 if (tardy) a.put("check_in", start.plusMinutes(20));
-                when(records.find(attendance, false)).thenReturn(a);
-                when(records.find(attendance, true)).thenReturn(a);
+                when(records.find(attendance)).thenReturn(a);
+                when(records.findForUpdate(attendance)).thenReturn(a);
                 when(workflow.locked(callout))
                         .thenReturn(Map.of("start_at", start, "end_at", end, "title", "Guardia"));
-                when(justifications.justification(any(UUID.class), eq(false)))
+                when(justifications.justification(any(UUID.class)))
                         .thenReturn(
                                 Map.of(
                                         "name",
@@ -74,6 +74,7 @@ class JustificationDeadlineTest {
                     assertThrows(
                             IllegalArgumentException.class,
                             () -> useCase.justify(attendance, reason));
+                    verify(records).findForUpdate(attendance);
                     verify(justifications, never())
                             .justify(any(), any(), any(), any(), any(), anyBoolean(), any());
                 } else {

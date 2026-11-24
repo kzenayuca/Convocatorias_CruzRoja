@@ -37,7 +37,7 @@ public class ResponsibleManagement extends UseCaseSupport {
 
     public List<Map<String, Object>> candidates(UUID calloutId) {
         require(chief(), "Solo jefatura asigna responsables.");
-        var callout = repository.snapshot(calloutId, false);
+        var callout = repository.snapshot(calloutId);
         return repository.responsibleCandidates(calloutId).stream()
                 .filter(user -> !workflow.overlap(callout, id(user, "id")))
                 .toList();
@@ -80,7 +80,7 @@ public class ResponsibleManagement extends UseCaseSupport {
             valid(
                     workflow.qualified(callout, user, "RESPONSABLE"),
                     "El responsable debe ser un voluntario graduado activo.");
-            var own = enrollments.byUser(calloutId, user, false);
+            var own = enrollments.byUser(calloutId, user);
             valid(
                     own.size() == 1
                             && "CONFIRMADA".equals(own.get(0).get("status"))

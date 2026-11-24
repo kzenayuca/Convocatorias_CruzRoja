@@ -37,8 +37,14 @@ public class JdbcAttendanceRepository extends JdbcSupport
                 user != null ? user : callout);
     }
 
-    public Map<String, Object> find(UUID id, boolean lock) {
-        return row("SELECT * FROM attendance_records WHERE id=?" + (lock ? " FOR UPDATE" : ""), id);
+    private static final String ATTENDANCE_BY_ID = "SELECT * FROM attendance_records WHERE id=?";
+
+    public Map<String, Object> find(UUID id) {
+        return row(ATTENDANCE_BY_ID, id);
+    }
+
+    public Map<String, Object> findForUpdate(UUID id) {
+        return row(ATTENDANCE_BY_ID + " FOR UPDATE", id);
     }
 
     public Map<String, Object> byEnrollment(UUID id) {
@@ -114,8 +120,12 @@ public class JdbcAttendanceRepository extends JdbcSupport
                 REVIEWS + " WHERE r.attendance_id=? ORDER BY r.submitted_at DESC,r.id", attendance);
     }
 
-    public Map<String, Object> review(UUID id, boolean lock) {
-        return row(REVIEWS + " WHERE r.id=?" + (lock ? " FOR UPDATE OF r" : ""), id);
+    public Map<String, Object> review(UUID id) {
+        return row(REVIEWS + " WHERE r.id=?", id);
+    }
+
+    public Map<String, Object> reviewForUpdate(UUID id) {
+        return row(REVIEWS + " WHERE r.id=? FOR UPDATE OF r", id);
     }
 
     public void resolveReview(
@@ -189,8 +199,12 @@ public class JdbcAttendanceRepository extends JdbcSupport
                 id);
     }
 
-    public Map<String, Object> justification(UUID id, boolean lock) {
-        return row(JUSTIFICATIONS + " WHERE j.id=?" + (lock ? " FOR UPDATE OF j" : ""), id);
+    public Map<String, Object> justification(UUID id) {
+        return row(JUSTIFICATIONS + " WHERE j.id=?", id);
+    }
+
+    public Map<String, Object> justificationForUpdate(UUID id) {
+        return row(JUSTIFICATIONS + " WHERE j.id=? FOR UPDATE OF j", id);
     }
 
     public void requestReplacement(
