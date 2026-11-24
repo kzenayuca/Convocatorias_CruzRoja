@@ -8,6 +8,13 @@
 - `DB_URL`, `DB_USER`, `DB_PASSWORD` configuran el backend. Compose no exporta automáticamente su `.env` a Spring.
 - El frontend puede cambiar el destino API mediante `API_PROXY_TARGET`, sin cambiar las rutas `/api`.
 
+Adminer no arranca por defecto. Habilitarlo con `docker compose --profile tools up -d`
+y abrir `http://127.0.0.1:8081`; el puerto está enlazado únicamente a `127.0.0.1`.
+Para detener solo Adminer: `docker compose --profile tools stop adminer`.
+Si existía un contenedor con el puerto publicado en todas las interfaces, recrearlo con
+`docker compose --profile tools up -d adminer` para aplicar la restricción.
+No se modifican el puerto de PostgreSQL ni los volúmenes.
+
 No guardar credenciales reales en Git. Las cuentas demo son únicamente para desarrollo.
 
 ## Base existente: antes del primer arranque
@@ -54,6 +61,8 @@ Desde `frontend`:
 
 ```bash
 npm ci
+npm test
+npm run check
 npm run build
 ```
 
@@ -67,6 +76,11 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
 
 ## Pruebas
 
+- Frontend: Vitest + jsdom + React Testing Library, sin API ni base de datos reales.
+  `npm test` ejecuta una vez; `npm run test:watch` observa cambios localmente.
+  Las pruebas de caracterización protegen `useData`, formularios y acciones antes de refactorizar.
+  Las llamadas `fetch` se simulan y restauran por prueba.
+  Actions ejecuta la suite en el job frontend con Node 22.
 - Dominio/aplicación: reglas y coordinación sin servidor.
 - ArchUnit: dependencias y aislamiento del núcleo.
 - ORM/HTTP: PostgreSQL aislado, mapeos, restricciones, permisos y transacciones.
