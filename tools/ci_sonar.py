@@ -10,6 +10,7 @@ import secrets
 import sys
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 
 
@@ -40,8 +41,12 @@ class Sonar:
             self.url + path, data=body,
             headers={"Authorization": self.authorization},
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            content = response.read()
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                content = response.read()
+        except urllib.error.HTTPError as error:
+            # Identify the failed operation, never log request data or response bodies.
+            raise OSError(f"{path.split('?')[0]}: HTTP {error.code}") from None
         return json.loads(content) if content else {}
 
 
@@ -67,6 +72,12 @@ def wait_for_server(client):
         time.sleep(5)
 
 
+def temporary_password():
+    # token_urlsafe alone does not guarantee SonarQube's four character classes.
+    # Keep 256 random bits and guarantee uppercase, lowercase, digit and symbol.
+    return secrets.token_urlsafe(32) + "Aa1!"
+
+
 def prepare():
     """Only for a NEW, disposable CI server; never run against a personal server."""
     if os.environ.get("GITHUB_ACTIONS") != "true":
@@ -82,7 +93,7 @@ def prepare():
     client = Sonar(os.environ["SONAR_HOST_URL"], password="admin")
     status = wait_for_server(client)
     save("server.json", status)
-    password = secrets.token_urlsafe(32)
+    password = temporary_password()
     print(f"::add-mask::{password}", flush=True)
     client.request("/api/users/change_password", {
         "login": "admin", "previousPassword": "admin", "password": password,

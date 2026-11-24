@@ -46,6 +46,8 @@ jobs:
         with:
           path: ~/.m2/wrapper
           key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
+      - name: Preparar Maven Wrapper con reintentos de descarga
+        run: bash ../tools/ci_maven_bootstrap.sh
       - name: Arquitectura, dominio, casos de uso y regresión con PostgreSQL aislado
         run: bash ./mvnw -B -ntp -Pquality verify
       - name: Resumir pruebas y cobertura reales
@@ -203,6 +205,9 @@ jobs:
         with:
           path: ~/.m2/wrapper
           key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
+      - name: Preparar Maven Wrapper con reintentos de descarga
+        working-directory: backend
+        run: bash ../tools/ci_maven_bootstrap.sh
       - name: Iniciar API y frontend de pruebas
         env:
           SPRING_PROFILES_ACTIVE: local-demo
