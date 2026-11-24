@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canAssignDirectly, canEditCallout, canEnroll, enrollmentStatusLabel, isFuture, parseRequirements,
+  canAssignDirectly, canEditCallout, canEnroll, canReviewEnrollment, enrollmentStatusLabel, isFuture, parseRequirements,
+  reviewDecisions,
 } from './calloutRules';
 import type { Session } from '../api';
 
@@ -61,4 +62,24 @@ describe('canAssignDirectly', () => {
 describe('enrollmentStatusLabel', () => {
   it('muestra ACEPTADA para CONFIRMADA', () => expect(enrollmentStatusLabel('CONFIRMADA')).toBe('ACEPTADA'));
   it('mantiene otros estados', () => expect(enrollmentStatusLabel('PENDIENTE')).toBe('PENDIENTE'));
+});
+
+describe('canReviewEnrollment', () => {
+  const callout = { start_at: FUTURE };
+  it('permite a jefatura revisar una inscripción confirmada antes del servicio', () =>
+    expect(canReviewEnrollment(chief, callout, { status: 'CONFIRMADA' }, NOW)).toBe(true));
+  it('permite revisar una solicitud de reemplazo pendiente', () =>
+    expect(canReviewEnrollment(chief, callout, { status: 'PENDIENTE_REEMPLAZO' }, NOW)).toBe(true));
+  it('no permite revisar a un voluntario', () =>
+    expect(canReviewEnrollment(volunteer, callout, { status: 'CONFIRMADA' }, NOW)).toBe(false));
+  it('no permite revisar cuando el servicio ya empezó', () =>
+    expect(canReviewEnrollment(chief, { start_at: PAST }, { status: 'CONFIRMADA' }, NOW)).toBe(false));
+  it('no permite revisar una inscripción cancelada', () =>
+    expect(canReviewEnrollment(chief, callout, { status: 'CANCELADA' }, NOW)).toBe(false));
+});
+
+describe('reviewDecisions', () => {
+  it('una inscripción confirmada solo puede rechazarse', () => expect(reviewDecisions('CONFIRMADA')).toEqual(['RECHAZAR']));
+  it('un reemplazo pendiente puede aprobarse o rechazarse', () =>
+    expect(reviewDecisions('PENDIENTE_REEMPLAZO')).toEqual(['APROBAR', 'RECHAZAR']));
 });
