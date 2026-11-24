@@ -1,16 +1,37 @@
 """Verify evidence export and failure semantics without needing Docker or a token."""
 
 import json
+import io
 import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+import urllib.error
 
 import ci_sonar
 
 
 class SonarEvidenceTest(unittest.TestCase):
+    def test_password_always_meets_server_policy_even_with_uniform_random_data(self):
+        with patch.object(ci_sonar.secrets, "token_urlsafe", return_value="x" * 43):
+            password = ci_sonar.temporary_password()
+        self.assertGreaterEqual(len(password), 12)
+        for pattern in ("[A-Z]", "[a-z]", "[0-9]", "[^a-zA-Z0-9]"):
+            self.assertRegex(password, pattern)
+
+    def test_http_error_identifies_endpoint_without_exposing_credentials(self):
+        error = urllib.error.HTTPError(
+            "http://localhost/api/users/change_password", 400, "",
+            {}, io.BytesIO(b'{"result":"sensitive-password"}'),
+        )
+        with patch.object(ci_sonar.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaises(OSError) as raised:
+                ci_sonar.Sonar("http://localhost", password="secret").request(
+                    "/api/users/change_password", {"password": "sensitive-password"},
+                )
+        self.assertEqual("/api/users/change_password: HTTP 400", str(raised.exception))
+
     def test_startup_tolerates_reset_and_starting_status(self):
         client = Mock()
         client.request.side_effect = [
