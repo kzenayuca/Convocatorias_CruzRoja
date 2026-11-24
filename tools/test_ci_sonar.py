@@ -11,6 +11,25 @@ import ci_sonar
 
 
 class SonarEvidenceTest(unittest.TestCase):
+    def test_startup_tolerates_reset_and_starting_status(self):
+        client = Mock()
+        client.request.side_effect = [
+            ConnectionResetError("Connection reset by peer"),
+            {"status": "STARTING"},
+            {"status": "UP"},
+        ]
+        with patch.object(ci_sonar.time, "sleep") as sleep:
+            self.assertEqual("UP", ci_sonar.wait_for_server(client)["status"])
+        self.assertEqual(2, sleep.call_count)
+
+    def test_startup_has_a_finite_deadline(self):
+        client = Mock()
+        client.request.side_effect = ConnectionRefusedError()
+        with patch.object(ci_sonar.time, "monotonic", side_effect=[0, 300]), \
+                patch.object(ci_sonar.time, "sleep"), \
+                self.assertRaisesRegex(ValueError, "300 segundos"):
+            ci_sonar.wait_for_server(client)
+
     def test_properties_preserve_equals_in_value(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sonar.properties"

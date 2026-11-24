@@ -9,7 +9,6 @@ from pathlib import Path
 import secrets
 import sys
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -53,6 +52,21 @@ def save(name, data):
     )
 
 
+def wait_for_server(client):
+    deadline = time.monotonic() + 300
+    while True:
+        try:
+            status = client.request("/api/system/status")
+            if status.get("status") == "UP":
+                return status
+        except (OSError, json.JSONDecodeError):
+            # The published Docker port can reset connections before HTTP is ready.
+            pass
+        if time.monotonic() >= deadline:
+            raise ValueError("SonarQube no alcanzo estado UP en 300 segundos.")
+        time.sleep(5)
+
+
 def prepare():
     """Only for a NEW, disposable CI server; never run against a personal server."""
     if os.environ.get("GITHUB_ACTIONS") != "true":
@@ -66,17 +80,7 @@ def prepare():
     if not list(Path("backend/target/sonar-libraries").glob("*.jar")):
         raise ValueError("Faltan dependencias Java para Scanner CLI.")
     client = Sonar(os.environ["SONAR_HOST_URL"], password="admin")
-    deadline = time.monotonic() + 300
-    while True:
-        try:
-            status = client.request("/api/system/status")
-            if status.get("status") == "UP":
-                break
-        except (urllib.error.URLError, TimeoutError):
-            pass
-        if time.monotonic() >= deadline:
-            raise ValueError("SonarQube no alcanzo estado UP en 300 segundos.")
-        time.sleep(5)
+    status = wait_for_server(client)
     save("server.json", status)
     password = secrets.token_urlsafe(32)
     print(f"::add-mask::{password}", flush=True)

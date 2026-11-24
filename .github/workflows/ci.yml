@@ -41,6 +41,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+      - name: Cache de la distribución Maven Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Arquitectura, dominio, casos de uso y regresión con PostgreSQL aislado
         run: bash ./mvnw -B -ntp -Pquality verify
       - name: Resumir pruebas y cobertura reales
@@ -56,7 +61,7 @@ jobs:
             backend/target/surefire-reports/
             backend/target/site/jacoco/
             backend/target/ci-summary.md
-      - name: Conservar binarios para analizar el mismo código probado
+      - name: Resolver dependencias Java para Scanner CLI
         # Scanner CLI necesita las dependencias Java además del bytecode.
         # Se resuelven con el mismo POM que se acaba de construir.
         run: bash ./mvnw -B -ntp dependency:copy-dependencies -DincludeScope=test -DoutputDirectory=target/sonar-libraries
@@ -193,6 +198,11 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Cache de la distribución Maven Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: ${{ runner.os }}-maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
       - name: Iniciar API y frontend de pruebas
         env:
           SPRING_PROFILES_ACTIVE: local-demo

@@ -21,6 +21,8 @@ Archivo: `.github/workflows/ci.yml`.
 1. **backend / GitHub Ubuntu:** PostgreSQL efímero y `./mvnw -B -ntp -Pquality verify`.
    Comprueba formato, compila, ejecuta JUnit (unitarias, arquitectura e integración),
    produce JaCoCo y empaqueta. No toca bases de datos personales.
+   La distribución Maven Wrapper se conserva en caché para reducir descargas
+   repetidas (también en el job funcional).
 2. Lee los XML Surefire/JaCoCo y publica cantidades reales, separando omitidas de
    aprobadas. Resuelve las dependencias Java para Scanner CLI y comparte bytecode,
    librerías y reportes de esa misma ejecución.
