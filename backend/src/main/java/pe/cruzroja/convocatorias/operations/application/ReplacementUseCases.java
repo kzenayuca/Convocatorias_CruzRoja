@@ -9,14 +9,16 @@ import pe.cruzroja.convocatorias.shared.application.*;
 
 /** Un único cambio transaccional: resolución, relevo de la plaza, permisos y avisos. */
 public class ReplacementUseCases extends UseCaseSupport {
-    private final AttendanceRepository requests;
+    private final JustificationRepository justificationRecords;
+    private final AttendanceDirectoryRepository userDirectory;
     private final EnrollmentRepository enrollments;
     private final CalloutWorkflow workflow;
     private final MonthlyLedger ledger;
     private final ImageInspector images;
 
     public ReplacementUseCases(
-            AttendanceRepository requests,
+            JustificationRepository justificationRecords,
+            AttendanceDirectoryRepository userDirectory,
             EnrollmentRepository enrollments,
             CalloutWorkflow workflow,
             MonthlyLedger ledger,
@@ -24,7 +26,8 @@ public class ReplacementUseCases extends UseCaseSupport {
             ExecutionContext context,
             NotificationPublisher notifications) {
         super(context, notifications);
-        this.requests = requests;
+        this.justificationRecords = justificationRecords;
+        this.userDirectory = userDirectory;
         this.enrollments = enrollments;
         this.workflow = workflow;
         this.ledger = ledger;
@@ -67,7 +70,7 @@ public class ReplacementUseCases extends UseCaseSupport {
                 r.reason(), r.proposedReplacementName(), time(c, "start_at"), now());
         ledger.ensureOpen(c);
         valid(
-                requests.justifications(actor().id()).stream()
+                justificationRecords.justifications(actor().id()).stream()
                         .noneMatch(
                                 j ->
                                         enrollment.equals(j.get("enrollment_id"))
@@ -76,17 +79,17 @@ public class ReplacementUseCases extends UseCaseSupport {
                 "Ya tienes una solicitud pendiente para esta inscripción.");
         var evidence = EvidenceFile.inspect(bytes, images);
         UUID request = UUID.randomUUID();
-        requests.requestReplacement(
+        justificationRecords.requestReplacement(
                 request,
                 enrollment,
                 actor().id(),
                 r.reason().trim(),
                 r.proposedReplacementName() == null ? null : r.proposedReplacementName().trim(),
                 now());
-        requests.evidence(request, evidence);
+        justificationRecords.evidence(request, evidence);
         enrollments.cancellation(enrollment, r.reason(), now());
-        var j = requests.justification(request, false);
-        var recipients = new LinkedHashSet<>(requests.chiefs());
+        var j = justificationRecords.justification(request, false);
+        var recipients = new LinkedHashSet<>(userDirectory.chiefs());
         if (c.get("responsible_id") != null && !actor().id().equals(c.get("responsible_id")))
             recipients.add(id(c, "responsible_id"));
         String link = "/justifications?request=" + request;
@@ -113,9 +116,9 @@ public class ReplacementUseCases extends UseCaseSupport {
     }
 
     public Map<String, Object> detail(UUID id) {
-        var j = requests.justification(id, false);
+        var j = justificationRecords.justification(id, false);
         if (chief() || actor().id().equals(j.get("volunteer_id"))) {
-            j.put("history", requests.justificationHistory(id));
+            j.put("history", justificationRecords.justificationHistory(id));
             return j;
         }
         // Un responsable recibe solo el resumen operativo de una solicitud puntual, nunca el
@@ -145,16 +148,16 @@ public class ReplacementUseCases extends UseCaseSupport {
     }
 
     public EvidenceFile evidence(UUID id) {
-        var j = requests.justification(id, false);
+        var j = justificationRecords.justification(id, false);
         require(
                 chief() || actor().id().equals(j.get("volunteer_id")),
                 "La evidencia es privada: solo el solicitante y Jefatura pueden verla.");
-        return requests.evidence(id);
+        return justificationRecords.evidence(id);
     }
 
     public List<Map<String, Object>> candidates(UUID id) {
         require(chief(), "Solo Jefatura puede consultar y asignar reemplazos.");
-        var j = requests.justification(id, false);
+        var j = justificationRecords.justification(id, false);
         valid("REEMPLAZO".equals(j.get("kind")), "Esta justificación no solicita un reemplazo.");
         var e = enrollments.find(id(j, "enrollment_id"), false);
         var c = workflow.locked(id(j, "callout_id"));
@@ -179,9 +182,9 @@ public class ReplacementUseCases extends UseCaseSupport {
 
     public void resolve(UUID id, Resolution r) {
         require(chief(), "Solo Jefatura asigna reemplazos y resuelve justificaciones.");
-        var initial = requests.justification(id, false);
+        var initial = justificationRecords.justification(id, false);
         var c = workflow.locked(id(initial, "callout_id"));
-        var j = requests.justification(id, true);
+        var j = justificationRecords.justification(id, true);
         valid(
                 "REEMPLAZO".equals(j.get("kind")) && "PENDIENTE".equals(j.get("status")),
                 "La solicitud de reemplazo ya fue resuelta o no corresponde a este trámite.");
@@ -225,7 +228,7 @@ public class ReplacementUseCases extends UseCaseSupport {
                     now());
             var replacement = enrollments.byUser(id(c, "id"), selected, true).get(0);
             enrollments.review(id(replacement, "id"), true, r.comment(), now());
-            requests.assignedReplacement(id, selected);
+            justificationRecords.assignedReplacement(id, selected);
             workflow.assignResponsible(c);
             workflow.synchronize(c);
             notifyUser(
@@ -241,7 +244,7 @@ public class ReplacementUseCases extends UseCaseSupport {
                             + e.get("position"),
                     "/callouts/" + c.get("id"));
         } else enrollments.clearCancellation(id(e, "id"));
-        requests.decision(
+        justificationRecords.decision(
                 new Justification(id, text(j, "status"))
                         .resolve(r.approved(), r.comment(), actor().id(), now(), 0, 0));
         String link = "/justifications?request=" + id;

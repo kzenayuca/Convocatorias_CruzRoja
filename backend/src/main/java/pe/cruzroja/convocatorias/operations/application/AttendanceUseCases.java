@@ -9,7 +9,11 @@ import pe.cruzroja.convocatorias.operations.domain.*;
 import pe.cruzroja.convocatorias.shared.application.*;
 
 public class AttendanceUseCases extends UseCaseSupport implements GraduationEligibility {
-    private final AttendanceRepository repository;
+    private final AttendanceRecordRepository attendanceRecords;
+    private final AttendanceReviewRepository attendanceReviews;
+    private final JustificationRepository justificationRecords;
+    private final MonthlyReportRepository monthlyReports;
+    private final AttendanceDirectoryRepository userDirectory;
     private final EnrollmentRepository enrollments;
     private final CalloutRepository callouts;
     private final CalloutWorkflow services;
@@ -19,7 +23,11 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     private final ImageInspector images;
 
     public AttendanceUseCases(
-            AttendanceRepository repository,
+            AttendanceRecordRepository attendanceRecords,
+            AttendanceReviewRepository attendanceReviews,
+            JustificationRepository justificationRecords,
+            MonthlyReportRepository monthlyReports,
+            AttendanceDirectoryRepository userDirectory,
             EnrollmentRepository enrollments,
             CalloutRepository callouts,
             CalloutWorkflow services,
@@ -30,7 +38,11 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
             ExecutionContext context,
             NotificationPublisher notifications) {
         super(context, notifications);
-        this.repository = repository;
+        this.attendanceRecords = attendanceRecords;
+        this.attendanceReviews = attendanceReviews;
+        this.justificationRecords = justificationRecords;
+        this.monthlyReports = monthlyReports;
+        this.userDirectory = userDirectory;
         this.enrollments = enrollments;
         this.callouts = callouts;
         this.services = services;
@@ -68,7 +80,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     private List<Map<String, Object>> records(UUID user, UUID callout) {
-        return repository.records(user, callout).stream()
+        return attendanceRecords.records(user, callout).stream()
                 .map(
                         a -> {
                             a.put(
@@ -80,7 +92,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                                     "month_closed",
                                     ledger.closed(YearMonth.from(time(a, "start_at"))));
                             a.put("deduction", rounded(deduction(a)));
-                            a.put("review_requests", repository.reviews(id(a, "id")));
+                            a.put("review_requests", attendanceReviews.reviews(id(a, "id")));
                             return a;
                         })
                 .toList();
@@ -115,12 +127,12 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                 !now().isBefore(time(c, "start_at").minusHours(1))
                         && !now().isAfter(time(c, "end_at").plusHours(1)),
                 "Marcación fuera de la ventana del servicio. Solicita revisión.");
-        repository.prepareMark(
+        attendanceRecords.prepareMark(
                 id,
                 actor().id(),
                 id(c, "id"),
                 c.get("responsible_id") == null ? actor().id() : id(c, "responsible_id"));
-        var a = repository.byEnrollment(id);
+        var a = attendanceRecords.byEnrollment(id);
         if (r.action().equals("ENTRADA")) {
             valid(
                     now().isBefore(time(c, "end_at")),
@@ -132,16 +144,16 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                             && a.get("check_in") != null
                             && a.get("check_out") == null,
                     "Registra primero tu entrada; la salida no puede repetirse.");
-        repository.mark(id(a, "id"), r.action(), now());
+        attendanceRecords.mark(id(a, "id"), r.action(), now());
         if (r.action().equals("SALIDA"))
             notifyReviewers(
                     c,
-                    "Marcas de " + repository.userName(actor().id()) + " listas para validar.",
+                    "Marcas de " + userDirectory.userName(actor().id()) + " listas para validar.",
                     "/callouts/" + c.get("id") + "?attendance=" + a.get("id"));
     }
 
     public void confirm(UUID id, Confirmation r) {
-        var a = repository.find(id, false);
+        var a = attendanceRecords.find(id, false);
         var c = services.locked(id(a, "callout_id"));
         services.operationPermission(c);
         ledger.ensureOpen(c);
@@ -156,14 +168,14 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                         false,
                         "CANCELADA".equals(c.get("status")));
         double hours = model.confirm(r.checkIn(), r.checkOut(), r.hours(), chief(), now());
-        repository.confirm(
+        attendanceRecords.confirm(
                 id, r.checkIn(), r.checkOut(), rounded(hours), actor().id(), r.observations());
         boolean requested = false;
-        for (var review : repository.reviews(id))
+        for (var review : attendanceReviews.reviews(id))
             if ("PENDIENTE".equals(review.get("status"))) {
                 requested = true;
                 UUID request = id(review, "id");
-                repository.resolveReview(
+                attendanceReviews.resolveReview(
                         new AttendanceReview(request, "PENDIENTE")
                                 .resolve(true, r.observations(), actor().id(), now()));
                 notifyUser(
@@ -192,23 +204,23 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                 text(e, "status").equals("CONFIRMADA") && text(c, "kind").equals("SERVICIO"),
                 "No corresponde revisión de asistencia.");
         valid(!time(c, "start_at").isAfter(now()), "El servicio aún no comenzó.");
-        repository.correction(
+        attendanceRecords.correction(
                 id,
                 actor().id(),
                 id(c, "id"),
                 c.get("responsible_id") == null ? actor().id() : id(c, "responsible_id"),
                 r.reason());
-        var attendance = repository.byEnrollment(id);
+        var attendance = attendanceRecords.byEnrollment(id);
         UUID a = id(attendance, "id");
         valid(
-                repository.reviews(a).stream()
+                attendanceReviews.reviews(a).stream()
                         .noneMatch(review -> "PENDIENTE".equals(review.get("status"))),
                 "Ya hay una solicitud de revisión pendiente para esta asistencia.");
         UUID request = UUID.randomUUID();
-        repository.createReview(request, a, actor().id(), r.reason(), now());
+        attendanceReviews.createReview(request, a, actor().id(), r.reason(), now());
         notifyReviewers(
                 c,
-                repository.userName(actor().id())
+                userDirectory.userName(actor().id())
                         + " solicita revisión de asistencia en "
                         + c.get("title"),
                 "/callouts/" + c.get("id") + "?attendance=" + a);
@@ -220,26 +232,26 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     private void notifyReviewers(Map<String, Object> c, String message, String link) {
-        var recipients = new LinkedHashSet<>(repository.chiefs());
+        var recipients = new LinkedHashSet<>(userDirectory.chiefs());
         if (c.get("responsible_id") != null) recipients.add(id(c, "responsible_id"));
         for (var recipient : recipients)
             if (!recipient.equals(actor().id())) notifyUser(recipient, "REVISION", message, link);
     }
 
     public Map<String, Object> reviewRequest(UUID id) {
-        var review = repository.review(id, false);
+        var review = attendanceReviews.review(id, false);
         if (!chief() && !actor().id().equals(review.get("volunteer_id")))
             services.operationPermission(callouts.snapshot(id(review, "callout_id"), false));
         return review;
     }
 
     public void rejectReview(UUID id, Resolution r) {
-        var initial = repository.review(id, false);
+        var initial = attendanceReviews.review(id, false);
         var c = services.locked(id(initial, "callout_id"));
         services.operationPermission(c);
-        var review = repository.review(id, true);
+        var review = attendanceReviews.review(id, true);
         valid(!r.approved(), "Para aprobar confirma primero las marcas y horas de la asistencia.");
-        repository.resolveReview(
+        attendanceReviews.resolveReview(
                 new AttendanceReview(id, text(review, "status"))
                         .resolve(false, r.comment(), actor().id(), now()));
         notifyUser(
@@ -255,9 +267,9 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
 
     public void justify(UUID id, Reason r, byte[] bytes) {
         require(!chief(), "Jefatura no está sujeta a penalizaciones ni necesita justificarse.");
-        var initial = repository.find(id, false);
+        var initial = attendanceRecords.find(id, false);
         var c = services.locked(id(initial, "callout_id"));
-        var a = repository.find(id, true);
+        var a = attendanceRecords.find(id, true);
         require(
                 actor().id().equals(a.get("volunteer_id")),
                 "Solo puedes justificar tu asistencia.");
@@ -280,7 +292,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                 "Un servicio cancelado no genera penalizaciones.");
         var evidence = EvidenceFile.inspect(bytes, images);
         UUID request = UUID.randomUUID();
-        repository.justify(
+        justificationRecords.justify(
                 request,
                 id,
                 actor().id(),
@@ -288,9 +300,9 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                 now(),
                 false,
                 time(a, "check_in") == null ? "AUSENCIA" : "TARDANZA");
-        repository.evidence(request, evidence);
-        var j = repository.justification(request, false);
-        for (var chief : repository.chiefs())
+        justificationRecords.evidence(request, evidence);
+        var j = justificationRecords.justification(request, false);
+        for (var chief : userDirectory.chiefs())
             notifyUser(
                     chief,
                     "JUSTIFICACION",
@@ -305,32 +317,32 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     public List<Map<String, Object>> justifications() {
-        var rows = repository.justifications(chief() ? null : actor().id());
+        var rows = justificationRecords.justifications(chief() ? null : actor().id());
         for (var j : rows) {
             j.put("month_closed", ledger.closed(YearMonth.from(time(j, "start_at"))));
-            j.put("history", repository.justificationHistory(id(j, "id")));
+            j.put("history", justificationRecords.justificationHistory(id(j, "id")));
         }
         return rows;
     }
 
     public void resolve(UUID id, Resolution r) {
         require(chief(), "Solo jefatura resuelve justificaciones.");
-        var initial = repository.justification(id, false);
+        var initial = justificationRecords.justification(id, false);
         valid(
                 !"REEMPLAZO".equals(initial.get("kind")),
                 "Asigna el reemplazo desde la solicitud antes de aprobarla.");
         var c = services.locked(id(initial, "callout_id"));
-        var j = repository.justification(id, true);
-        var a = repository.justificationAttendance(id);
+        var j = justificationRecords.justification(id, true);
+        var a = justificationRecords.justificationAttendance(id);
         double before = rounded(deduction(a));
         a.put("justification_status", r.approved() ? "APROBADA" : "RECHAZADA");
         double after = rounded(deduction(a));
         var decision =
                 new Justification(id, text(j, "status"))
                         .resolve(r.approved(), r.comment(), actor().id(), now(), before, after);
-        repository.decision(decision);
+        justificationRecords.decision(decision);
         if (ledger.closed(c) && decision.deductionDelta() != 0)
-            repository.adjustment(
+            justificationRecords.adjustment(
                     YearMonth.from(time(c, "start_at")), id(j, "volunteer_id"), decision);
         notifyUser(
                 id(j, "volunteer_id"),
@@ -347,9 +359,9 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
     }
 
     Map<String, Object> summary(UUID user, YearMonth month) {
-        boolean exempt = "JEFATURA".equals(repository.userRole(user));
+        boolean exempt = "JEFATURA".equals(userDirectory.userRole(user));
         if (ledger.closed(month)) {
-            var rows = repository.snapshot(user, month);
+            var rows = monthlyReports.snapshot(user, month);
             var result = new LinkedHashMap<String, Object>();
             result.putAll(
                     rows.isEmpty()
@@ -360,7 +372,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                             ((Number) result.get("earned")).doubleValue(),
                             ((Number) result.get("deductions")).doubleValue(),
                             ((Number) result.get("hours")).doubleValue(),
-                            repository.deductionDelta(user, month),
+                            monthlyReports.deductionDelta(user, month),
                             exempt);
             result.put("original_hours", balance.originalHours());
             result.put("original_deductions", balance.originalDeduction());
@@ -372,7 +384,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
             return result;
         }
         var rows =
-                repository.monthlyRecords(
+                monthlyReports.monthlyRecords(
                         user, month, !chief() && !user.equals(actor().id()) ? actor().id() : null);
         double earned = 0, deductions = 0;
         int pending = 0;
@@ -399,7 +411,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
         require(chief(), "Solo jefatura consulta el reporte general.");
         maintenance.refresh();
         var parsed = YearMonth.parse(month);
-        return (ledger.closed(parsed) ? repository.reportUsers(parsed) : repository.users())
+        return (ledger.closed(parsed) ? monthlyReports.reportUsers(parsed) : userDirectory.users())
                 .stream()
                         .map(
                                 u -> {
@@ -417,7 +429,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
         double earned = 0, deductions = 0;
         int pending = 0;
         var details = new ArrayList<Map<String, Object>>();
-        for (var month : repository.months(actor().id())) {
+        for (var month : monthlyReports.months(actor().id())) {
             if (actor().graduated() && month.getYear() != now().getYear()) continue;
             var row = summary(actor().id(), YearMonth.from(month));
             details.add(row);
@@ -449,17 +461,18 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
 
     public GraduationEligibility.Assessment assess(UUID user) {
         double balance = 0;
-        for (var month : repository.months(user))
+        for (var month : monthlyReports.months(user))
             balance += ((Number) summary(user, YearMonth.from(month)).get("hours")).doubleValue();
         return new GraduationEligibility.Assessment(
                 rounded(balance), graduation.progress(0, 0, 0, false).required());
     }
 
     private void graduationAlert(UUID user) {
-        if (!repository.trainingVolunteer(user)) return;
+        if (!userDirectory.trainingVolunteer(user)) return;
         var assessment = assess(user);
         if (!assessment.eligible()) return;
-        for (var chief : repository.chiefs()) notificationsForGraduation(chief, user, assessment);
+        for (var chief : userDirectory.chiefs())
+            notificationsForGraduation(chief, user, assessment);
     }
 
     private void notificationsForGraduation(
@@ -468,7 +481,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                 chief,
                 "GRADUACION:" + user + ":" + assessment.target(),
                 "GRADUACION",
-                repository.userName(user)
+                userDirectory.userName(user)
                         + " alcanzó la meta neta de formación ("
                         + assessment.balance()
                         + " h). Revisa y valida su condición.",
@@ -516,7 +529,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
         require(chief(), "Solo Jefatura consulta el reporte anual de todos los voluntarios.");
         maintenance.refresh();
         valid(year >= 1900 && year <= 9999, "Año no válido.");
-        return repository.users().stream()
+        return userDirectory.users().stream()
                 .filter(u -> !"JEFATURA".equals(u.get("role")))
                 .map(
                         u -> {
@@ -597,7 +610,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
         require(chief(), "Solo jefatura gestiona cierres mensuales.");
         maintenance.refresh();
         var parsed = YearMonth.parse(month);
-        var rows = repository.reportStatus(parsed);
+        var rows = monthlyReports.reportStatus(parsed);
         var row = new LinkedHashMap<String, Object>();
         row.put("status", rows.isEmpty() ? "EN_CURSO" : rows.get(0).get("status"));
         row.put("approved_at", rows.isEmpty() ? null : rows.get(0).get("approved_at"));
@@ -614,15 +627,15 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
         var parsed = YearMonth.parse(month);
         valid(parsed.isBefore(YearMonth.from(now())), "El mes todavía no terminó.");
         maintenance.refresh();
-        repository.lockMonthlyCallouts(parsed);
+        monthlyReports.lockMonthlyCallouts(parsed);
         valid(
-                !repository.unfinished(parsed, now()),
+                !monthlyReports.unfinished(parsed, now()),
                 "Hay servicios del mes que todavía no terminaron. Espera a su finalización para aprobar.");
-        repository.lockReport(parsed);
+        monthlyReports.lockReport(parsed);
         valid(!ledger.closed(parsed), "El reporte ya está aprobado y no se puede volver a cerrar.");
-        for (var u : repository.users()) {
+        for (var u : userDirectory.users()) {
             var s = summary(id(u, "id"), parsed);
-            repository.saveSnapshot(parsed, id(u, "id"), text(u, "name"), s);
+            monthlyReports.saveSnapshot(parsed, id(u, "id"), text(u, "name"), s);
             notifyUser(
                     id(u, "id"),
                     "REPORTE",
@@ -635,7 +648,7 @@ public class AttendanceUseCases extends UseCaseSupport implements GraduationElig
                             ? "/reports?month=" + parsed
                             : "/services?month=" + parsed);
         }
-        repository.approve(parsed, actor().id(), now());
+        monthlyReports.approve(parsed, actor().id(), now());
     }
 
     public Document reportPdf(String month) {

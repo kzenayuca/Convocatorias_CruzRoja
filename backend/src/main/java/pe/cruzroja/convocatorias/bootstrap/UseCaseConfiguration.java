@@ -32,7 +32,7 @@ public class UseCaseConfiguration {
     }
 
     @Bean
-    MonthlyLedger monthlyLedger(AttendanceRepository r) {
+    MonthlyLedger monthlyLedger(MonthlyReportClosureRepository r) {
         return new MonthlyLedger(r);
     }
 
@@ -49,7 +49,8 @@ public class UseCaseConfiguration {
 
     @Bean
     ReplacementUseCases replacements(
-            AttendanceRepository r,
+            JustificationRepository j,
+            AttendanceDirectoryRepository d,
             EnrollmentRepository e,
             CalloutWorkflow w,
             MonthlyLedger l,
@@ -58,7 +59,7 @@ public class UseCaseConfiguration {
             NotificationPublisher n,
             PlatformTransactionManager tx) {
         return transactional(
-                new ReplacementUseCases(r, e, w, l, i, c, n),
+                new ReplacementUseCases(j, d, e, w, l, i, c, n),
                 tx,
                 "submit",
                 "resolve",
@@ -106,7 +107,11 @@ public class UseCaseConfiguration {
 
     @Bean
     AttendanceUseCases attendance(
-            AttendanceRepository r,
+            AttendanceRecordRepository records,
+            AttendanceReviewRepository reviews,
+            JustificationRepository justifications,
+            MonthlyReportRepository reports,
+            AttendanceDirectoryRepository directory,
             EnrollmentRepository e,
             CalloutRepository callouts,
             CalloutWorkflow w,
@@ -118,7 +123,21 @@ public class UseCaseConfiguration {
             NotificationPublisher n,
             PlatformTransactionManager tx) {
         return transactional(
-                new AttendanceUseCases(r, e, callouts, w, m, l, settings, images, c, n),
+                new AttendanceUseCases(
+                        records,
+                        reviews,
+                        justifications,
+                        reports,
+                        directory,
+                        e,
+                        callouts,
+                        w,
+                        m,
+                        l,
+                        settings,
+                        images,
+                        c,
+                        n),
                 tx,
                 "mark",
                 "confirm",
