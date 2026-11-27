@@ -21,6 +21,7 @@ Aplicación web para organizar convocatorias, inscripciones, equipos y resultado
 2. [Arquitectura, tablas y modelo StarUML](docs/ARQUITECTURA.md).
 3. [Desarrollo, migraciones y pruebas](docs/DESARROLLO.md).
 4. [Convenciones, estilos y Clean Code](docs/CALIDAD.md).
+5. [Práctica 07: ejecución, Jenkins y checklist de entrega](docs/PRACTICA07.md).
 
 ## Ejecutar localmente
 

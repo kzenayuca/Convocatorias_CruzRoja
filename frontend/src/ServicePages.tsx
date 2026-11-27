@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, changed, date, delay, localInput, manager, Row, Session, useData } from './api';
+import { api, changed, CreatedResource, date, delay, localInput, manager, Row, Session, useData } from './api';
 import { Action, DataForm, ErrorNotice, Field, PdfDownload, saveSucceeded, useRequestFocus } from './components';
 import { AnnualEnrollmentPanel } from './AnnualPages';
+import { useRequest } from './useRequest';
 import { categoryNames as categories, calloutStatusNames as statuses, positionNames } from './callouts/calloutLabels';
 import { canAssignDirectly, canEditCallout, canEnroll, isChief, parseRequirements } from './callouts/calloutRules';
 import { CalloutHero, EnrollmentSection, ServiceInformation } from './callouts/CalloutDetailSections';
@@ -35,7 +36,7 @@ export function CalloutsPage({ user, history = false }: { user: Session; history
   const filtered = data.filter(c => `${c.service_code ?? ''} ${c.title} ${c.service_type} ${c.location} ${statuses[c.status]}`.toLowerCase().includes(query.toLowerCase()));
   return <><div className="page-heading"><div><p className="eyebrow">{history ? 'Tu recorrido' : 'Encuentra tu próxima actividad'}</p><h1>{history ? 'Historial' : 'Convocatorias'}</h1><p className="lead">{history ? 'Servicios anteriores según tus permisos.' : 'Encuentra un puesto según tu formación y disponibilidad.'}</p></div>{manager(user) && !history && <button className="button" onClick={() => setCreate(!create)}>{create ? 'Cerrar formulario' : 'Nueva convocatoria'}</button>}</div>
     <ErrorNotice message={error}/>{create && <section className="section-block"><h2>Preparar convocatoria</h2><p>Voluntario = graduado o en formación. Total 4 y mínimo 1 graduado significa 4 personas, no 5. Responsable, piloto y radioperador cuentan dentro del total y pueden cubrir el mínimo de graduados. El responsable sigue siendo opcional y lo asigna jefatura.</p>
-      <p>Código generado automáticamente, por ejemplo I-FEB-2027-024: categoría, mes/año de creación y orden de creación en esa categoría/año. El correlativo no vuelve a uno en marzo.</p><DataForm fields={callFields} initial={{ category: 'I', totalVolunteers: 4, graduateSlots: 0, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/>
+      <p>Código generado automáticamente, por ejemplo I-FEB-2027-024: categoría, mes/año de creación y orden de creación en esa categoría/año. El correlativo no vuelve a uno en marzo.</p><DataForm fields={callFields} initial={{ category: 'I', totalVolunteers: 4, graduateSlots: 0, radioSlots: 0, pilotSlots: 0, area: 'Voluntariado', serviceType: 'Apoyo Salud' }} label="Crear borrador" submit={async v => { const result = await api<CreatedResource>('/callouts', 'POST', v); navigate(`/callouts/${result.id}`); }}/>
     </section>}
     {!history && user.role === 'VOLUNTARIO' && user.graduated && <AnnualEnrollmentPanel/>}<div className="toolbar"><input aria-label="Buscar convocatorias" placeholder="Código, actividad, tipo o lugar…" value={query} onChange={e => setQuery(e.target.value)}/><button className="button secondary" onClick={() => setQuery('')}>Limpiar</button></div>
     <div className="callout-grid">{filtered.map(c => <article className="card callout-card" key={c.id}><div className="card-topline"><span className="eyebrow">{c.service_code || 'Código pendiente'}</span><span className={`badge ${c.status === 'CANCELADA' ? 'red' : ''}`}>{statuses[c.status] || c.status}</span></div>
@@ -246,8 +247,31 @@ function MaterialsPanel({ id }: { id: string }) {
   </details>;
 }
 function PhotoForm({ id, onSaved }: { id: string; onSaved: () => void }) {
-  const [file, setFile] = useState<File>(); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
-  return <form className="soft-panel" onSubmit={async e => { e.preventDefault(); const form = e.currentTarget; if (!file) return; setBusy(true); setMessage(''); try { if (file.size > 10 * 1024 * 1024) throw new Error('Máximo 10 MB.'); const data = new FormData(); data.append('file', file); await api(`/callouts/${id}/photo`, 'POST', data); saveSucceeded(form, 'Foto guardada.'); onSaved(); changed(); setMessage('Foto guardada.'); } catch (e) { setMessage((e as Error).message); } finally { setBusy(false); } }}><label className="field">Foto opcional JPG/PNG · hasta 10 MB y 40 megapíxeles<input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/></label><button className="button secondary" disabled={busy}>Guardar foto</button><p role="status">{message}</p></form>;
+  const [file, setFile] = useState<File>();
+  const request = useRequest();
+
+  async function uploadPhoto(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!file) return;
+    await request.run(async () => {
+      if (file.size > 10 * 1024 * 1024) throw new Error('Máximo 10 MB.');
+      const data = new FormData();
+      data.append('file', file);
+      await api(`/callouts/${id}/photo`, 'POST', data);
+      saveSucceeded(form, 'Foto guardada.');
+      onSaved();
+      changed();
+    });
+  }
+
+  return <form className="soft-panel" onSubmit={uploadPhoto}>
+    <label className="field">Foto opcional JPG/PNG · hasta 10 MB y 40 megapíxeles
+      <input type="file" accept="image/jpeg,image/png" required onChange={e => setFile(e.target.files?.[0])}/>
+    </label>
+    <button className="button secondary" disabled={request.busy}>Guardar foto</button>
+    <ErrorNotice message={request.error}/>
+  </form>;
 }
 function PhotoAttachment({ id, hasPhoto, closed }: { id: string; hasPhoto: boolean; closed: boolean }) {
   const [open, setOpen] = useState(false);

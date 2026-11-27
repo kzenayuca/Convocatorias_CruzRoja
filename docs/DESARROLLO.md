@@ -64,6 +64,7 @@ Desde `frontend`:
 npm ci
 npm test
 npm run check
+npm run format:check
 npm run build
 ```
 
@@ -80,8 +81,22 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
 - Frontend: Vitest + jsdom + React Testing Library, sin API ni base de datos reales.
   `npm test` ejecuta una vez; `npm run test:watch` observa cambios localmente.
   Las pruebas de caracterización protegen `useData`, formularios y acciones antes de refactorizar.
-  Las llamadas `fetch` se simulan y restauran por prueba.
-  Actions ejecuta la suite en el job frontend con Node 22.
+  Las de regresión cubren CSRF, errores HTTP/JSON, notificaciones, peticiones y límites temporales.
+  Las llamadas `fetch` se simulan y restauran por prueba; los límites temporales usan fechas
+  fijas y un instante actual explícito.
+  Actions ejecuta la suite y el formato en el job frontend con Node 22.
+- Formato de los módulos de páginas intervenidos: `npm run format:pages`.
+  El resto de módulos no se reformatea incidentalmente.
+- Peticiones de formularios y acciones: `useRequest` centraliza carga, error y finalización,
+  bloquea envíos simultáneos y controla rechazos incluso después de desmontar el componente.
+  Los efectos de éxito (cerrar formularios, refrescar datos, navegar) permanecen en cada consumidor.
+- Contratos HTTP: `api<T>()` devuelve `unknown` si el consumidor no declara un tipo.
+  CSRF y errores se validan en ejecución; un genérico TypeScript no valida JSON externo.
+  `Session`, `CreatedResource` y `Notification` describen respuestas conocidas.
+  Se conserva deliberadamente `Row = Record<string, any>` como compatibilidad para
+  proyecciones SQL heterogéneas y formularios dinámicos existentes, no como contrato nuevo.
+  Migrar todas esas proyecciones a DTOs requiere contrastar sus campos con cada endpoint;
+  cambiarlo a una conversión global no aumentaría la seguridad real.
 - Dominio/aplicación: reglas y coordinación sin servidor.
 - ArchUnit: dependencias y aislamiento del núcleo.
 - ORM/HTTP: PostgreSQL aislado, mapeos, restricciones, permisos y transacciones.
