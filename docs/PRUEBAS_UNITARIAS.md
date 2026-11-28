@@ -113,3 +113,9 @@ las pruebas de integración o Selenium hayan pasado. La ejecución completa con
 `-Pquality` en la carpeta compartida original encontró CRLF en 140 archivos.
 No se reformateó masivamente el código del equipo ni se desactivó Spotless.
 Para validación limpia utilizar un checkout nuevo que respete `.gitattributes`.
+
+La validación posterior del commit `b5e80b5` en checkout limpio y PostgreSQL
+desechable pasó `-Pquality verify`: 200 casos contabilizados, 192 aprobados,
+8 Selenium omitidos, 0 fallos y 0 errores. Ver
+[registro completo](PRACTICA07-VALIDACION.md). El resultado sigue siendo local,
+no un build autenticado de Jenkins.
