@@ -1,5 +1,10 @@
 # Práctica 07 — ejecución y entrega verificable
 
+Guía del laboratorio con interpretación de la captura y navegación en Jenkins:
+[pasos Jenkins/Sonar](PRACTICA07-JENKINS-PASOS.md).
+Ejemplos JUnit/Mockito y dónde ver cada caso:
+[pruebas unitarias](PRUEBAS_UNITARIAS.md).
+
 ## Alcance y estado
 
 El docente acepta `main` como equivalente de `master` y requiere Jenkins.

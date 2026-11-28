@@ -78,6 +78,9 @@ python3 tools/build_model.py --check backend/target/model/Convocatorias.mdj
 
 ## Pruebas
 
+Ejemplos JUnit (familia xUnit), dobles Mockito y ejecución selectiva:
+[pruebas unitarias y dobles](PRUEBAS_UNITARIAS.md).
+
 - Frontend: Vitest + jsdom + React Testing Library, sin API ni base de datos reales.
   `npm test` ejecuta una vez; `npm run test:watch` observa cambios localmente.
   Las pruebas de caracterización protegen `useData`, formularios y acciones antes de refactorizar.

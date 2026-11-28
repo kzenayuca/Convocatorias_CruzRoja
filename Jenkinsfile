@@ -86,7 +86,7 @@ pipeline {
                 }
             }
         }
-        stage('Pruebas y JaCoCo') {
+        stage('Pruebas JUnit y Mockito + JaCoCo') {
             steps {
                 script {
                     int tests = maven('-B -ntp -Pquality verify', true)

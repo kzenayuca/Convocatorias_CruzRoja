@@ -181,7 +181,7 @@ solo para simular automatización.
 | Preparar herramientas | Java/Python/Docker disponibles y pruebas de herramientas |
 | Construccion Maven | Spotless y compilación exitosas |
 | PostgreSQL aislado | Contenedor propio listo, puerto dinámico |
-| Pruebas y JaCoCo | JUnit real, sin contar omitidas como aprobadas |
+| Pruebas JUnit y Mockito + JaCoCo | JUnit real, sin contar omitidas como aprobadas |
 | Preparar analisis Java | Librerías copiadas para Scanner CLI |
 | SonarQube y Quality Gate | Análisis procesado, Gate y métricas exportados |
 | Publicar JAR | JAR descargable con fingerprint |
