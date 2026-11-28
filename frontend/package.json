@@ -8,7 +8,9 @@
     "check": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format:pages": "prettier --write src/AccountPages.tsx src/ServicePages.tsx src/ActivityPages.tsx src/components.tsx",
+    "format:check": "prettier --check src/AccountPages.tsx src/ServicePages.tsx src/ActivityPages.tsx src/components.tsx"
   },
   "dependencies": {
     "react": "19.2.0",
@@ -24,6 +26,7 @@
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "5.1.0",
     "jsdom": "26.1.0",
+    "prettier": "3.6.2",
     "typescript": "5.9.3",
     "vite": "^7.3.7",
     "vitest": "4.1.12"

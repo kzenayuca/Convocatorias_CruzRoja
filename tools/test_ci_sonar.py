@@ -13,6 +13,17 @@ import ci_sonar
 
 
 class SonarEvidenceTest(unittest.TestCase):
+    def test_jenkins_provenance_is_not_reported_as_github_or_ephemeral(self):
+        with patch.dict(os.environ, {
+            "CI_PROVIDER": "jenkins", "GIT_COMMIT": "jenkins-commit",
+            "BUILD_URL": "http://localhost:8090/job/backend/1/",
+        }, clear=True):
+            context = ci_sonar.analysis_context()
+        self.assertEqual("jenkins-commit", context["commit"])
+        self.assertEqual("jenkins", context["provider"])
+        self.assertFalse(context["ephemeral"])
+        self.assertIn("/job/backend/1/", context["run"])
+
     def test_password_always_meets_server_policy_even_with_uniform_random_data(self):
         with patch.object(ci_sonar.secrets, "token_urlsafe", return_value="x" * 43):
             password = ci_sonar.temporary_password()
@@ -131,6 +142,7 @@ class SonarEvidenceTest(unittest.TestCase):
                 {"paging": {"total": 0}, "hotspots": []},
             ]
             environment = {
+                "CI_PROVIDER": "github",
                 "SONAR_HOST_URL": "http://localhost:9000", "SONAR_TOKEN": "test-token",
                 "GITHUB_SHA": "abc123", "GITHUB_RUN_ID": "1",
                 "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "owner/repo",
